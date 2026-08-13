@@ -23,6 +23,7 @@ FPS = 60
 # =========================================================
 
 BACKGROUND = (235, 235, 235)
+
 WHITE = (250, 250, 250)
 BLACK = (30, 30, 30)
 GRID = (150, 150, 150)
@@ -35,6 +36,8 @@ GOAL_RED = (255, 225, 225)
 
 MOVE_COLOR = (100, 210, 130)
 MOVE_HOVER_COLOR = (70, 190, 100)
+
+JUMP_COLOR = (100, 170, 240)
 
 BUTTON_COLOR = (210, 210, 210)
 BUTTON_HOVER = (180, 180, 180)
@@ -64,11 +67,6 @@ clock = pygame.time.Clock()
 font = pygame.font.SysFont(
     "Arial",
     20
-)
-
-small_font = pygame.font.SysFont(
-    "Arial",
-    16
 )
 
 large_font = pygame.font.SysFont(
@@ -108,23 +106,38 @@ player2 = {
 # =========================================================
 
 turn = 1
+
 game_over = False
 
 
 # =========================================================
-# HELPER
+# GET CURRENT PLAYER
 # =========================================================
 
 def get_current_player():
 
     if turn == 1:
+
         return player1
 
     return player2
 
 
 # =========================================================
-# BOARD POSITION
+# GET OPPONENT
+# =========================================================
+
+def get_opponent(player):
+
+    if player is player1:
+
+        return player2
+
+    return player1
+
+
+# =========================================================
+# CELL POSITION
 # =========================================================
 
 def cell_position(row, col):
@@ -176,56 +189,164 @@ def get_legal_moves(player):
     row = player["row"]
     col = player["col"]
 
+    opponent = get_opponent(player)
+
     moves = []
 
     directions = [
-        (-1, 0),   # UP
-        (1, 0),    # DOWN
-        (0, -1),   # LEFT
-        (0, 1)     # RIGHT
+        (-1, 0),
+        (1, 0),
+        (0, -1),
+        (0, 1)
     ]
 
     for dr, dc in directions:
 
-        new_row = row + dr
-        new_col = col + dc
+        next_row = row + dr
+        next_col = col + dc
 
-        # -------------------------------------------------
-        # BOARD LIMIT
-        # -------------------------------------------------
+        # =================================================
+        # 1. BOARD LIMIT
+        # =================================================
 
         if not (
-            0 <= new_row < BOARD_SIZE
+            0 <= next_row < BOARD_SIZE
             and
-            0 <= new_col < BOARD_SIZE
+            0 <= next_col < BOARD_SIZE
         ):
 
             continue
 
-        # -------------------------------------------------
-        # OPPONENT
-        # -------------------------------------------------
+        # =================================================
+        # 2. NORMAL MOVE
+        # =================================================
 
-        opponent = (
-            player2
-            if player is player1
-            else player1
-        )
+        if not (
+            next_row == opponent["row"]
+            and
+            next_col == opponent["col"]
+        ):
+
+            moves.append(
+                (
+                    next_row,
+                    next_col
+                )
+            )
+
+            continue
+
+        # =================================================
+        # 3. OPPONENT IS NEXT TO US
+        # =================================================
+
+        jump_row = next_row + dr
+        jump_col = next_col + dc
+
+        # =================================================
+        # 4. STRAIGHT JUMP
+        # =================================================
 
         if (
-            new_row == opponent["row"]
+            0 <= jump_row < BOARD_SIZE
             and
-            new_col == opponent["col"]
+            0 <= jump_col < BOARD_SIZE
         ):
 
-            # Jump will be implemented later.
-            # For now, cannot move onto opponent.
+            # Jump destination cannot contain opponent.
+            if not (
+                jump_row == opponent["row"]
+                and
+                jump_col == opponent["col"]
+            ):
 
-            continue
+                moves.append(
+                    (
+                        jump_row,
+                        jump_col
+                    )
+                )
 
-        moves.append(
-            (new_row, new_col)
-        )
+                continue
+
+        # =================================================
+        # 5. STRAIGHT JUMP IMPOSSIBLE
+        # =================================================
+        #
+        # Try moving sideways around opponent.
+        #
+        # Vertical approach:
+        #
+        #       P1
+        #        |
+        #       P2
+        #      /  \
+        #
+        # Horizontal approach:
+        #
+        # P1 -- P2
+        #       / \
+        #
+        # =================================================
+
+        if dr != 0:
+
+            side_positions = [
+                (
+                    next_row,
+                    next_col - 1
+                ),
+                (
+                    next_row,
+                    next_col + 1
+                )
+            ]
+
+        else:
+
+            side_positions = [
+                (
+                    next_row - 1,
+                    next_col
+                ),
+                (
+                    next_row + 1,
+                    next_col
+                )
+            ]
+
+        for side_row, side_col in side_positions:
+
+            # ---------------------------------------------
+            # BOARD LIMIT
+            # ---------------------------------------------
+
+            if not (
+                0 <= side_row < BOARD_SIZE
+                and
+                0 <= side_col < BOARD_SIZE
+            ):
+
+                continue
+
+            # ---------------------------------------------
+            # CANNOT MOVE ONTO OPPONENT
+            # ---------------------------------------------
+
+            if (
+                side_row == opponent["row"]
+                and
+                side_col == opponent["col"]
+            ):
+
+                continue
+
+            moves.append(
+                (
+                    side_row,
+                    side_col
+                )
+            )
 
     return moves
 
@@ -301,10 +422,13 @@ def move_player(row, col):
     )
 
     # -----------------------------------------------------
-    # INVALID MOVE
+    # INVALID
     # -----------------------------------------------------
 
-    if (row, col) not in legal_moves:
+    if (
+        row,
+        col
+    ) not in legal_moves:
 
         return
 
@@ -316,7 +440,7 @@ def move_player(row, col):
     player["col"] = col
 
     # -----------------------------------------------------
-    # CHECK WIN
+    # WIN
     # -----------------------------------------------------
 
     if check_win(player):
@@ -348,7 +472,7 @@ def draw_board():
             )
 
             # -------------------------------------------------
-            # GOAL AREA
+            # GOAL AREAS
             # -------------------------------------------------
 
             if row == 0:
@@ -428,7 +552,10 @@ def draw_coordinates():
 
         screen.blit(
             text,
-            (x, y)
+            (
+                x,
+                y
+            )
         )
 
     # -----------------------------------------------------
@@ -458,7 +585,10 @@ def draw_coordinates():
 
         screen.blit(
             text,
-            (x, y)
+            (
+                x,
+                y
+            )
         )
 
 
@@ -478,11 +608,11 @@ def draw_legal_moves():
         player
     )
 
-    mouse_position = pygame.mouse.get_pos()
+    mouse_x, mouse_y = pygame.mouse.get_pos()
 
     hovered_cell = mouse_to_cell(
-        mouse_position[0],
-        mouse_position[1]
+        mouse_x,
+        mouse_y
     )
 
     for row, col in moves:
@@ -493,28 +623,25 @@ def draw_legal_moves():
         )
 
         center_x = (
-            x + CELL_SIZE // 2
+            x
+            + CELL_SIZE // 2
         )
 
         center_y = (
-            y + CELL_SIZE // 2
+            y
+            + CELL_SIZE // 2
         )
 
-        # -------------------------------------------------
-        # HOVER
-        # -------------------------------------------------
-
-        if hovered_cell == (row, col):
+        if hovered_cell == (
+            row,
+            col
+        ):
 
             color = MOVE_HOVER_COLOR
 
         else:
 
             color = MOVE_COLOR
-
-        # -------------------------------------------------
-        # DRAW MOVE INDICATOR
-        # -------------------------------------------------
 
         pygame.draw.circle(
             screen,
@@ -523,7 +650,7 @@ def draw_legal_moves():
                 center_x,
                 center_y
             ),
-            10
+            11
         )
 
 
@@ -546,11 +673,13 @@ def draw_player(
     )
 
     center_x = (
-        x + CELL_SIZE // 2
+        x
+        + CELL_SIZE // 2
     )
 
     center_y = (
-        y + CELL_SIZE // 2
+        y
+        + CELL_SIZE // 2
     )
 
     # -----------------------------------------------------
@@ -650,7 +779,7 @@ def draw_information():
     )
 
     # -----------------------------------------------------
-    # TURN
+    # TURN / WIN
     # -----------------------------------------------------
 
     if game_over:
@@ -696,7 +825,7 @@ def draw_information():
     )
 
     # -----------------------------------------------------
-    # PLAYER 1 INFO
+    # PLAYER 1
     # -----------------------------------------------------
 
     p1_position = (
@@ -730,7 +859,7 @@ def draw_information():
     )
 
     # -----------------------------------------------------
-    # PLAYER 2 INFO
+    # PLAYER 2
     # -----------------------------------------------------
 
     p2_position = (
@@ -847,7 +976,7 @@ while running:
     for event in pygame.event.get():
 
         # -------------------------------------------------
-        # WINDOW CLOSE
+        # CLOSE
         # -------------------------------------------------
 
         if event.type == pygame.QUIT:
@@ -866,7 +995,7 @@ while running:
                 mouse_y = event.pos[1]
 
                 # -----------------------------------------
-                # RESET BUTTON
+                # RESET
                 # -----------------------------------------
 
                 reset_button = pygame.Rect(
@@ -894,7 +1023,7 @@ while running:
                     continue
 
                 # -----------------------------------------
-                # BOARD CLICK
+                # BOARD
                 # -----------------------------------------
 
                 cell = mouse_to_cell(
