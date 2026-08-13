@@ -1,5 +1,6 @@
 import pygame
 import sys
+import random
 from collections import deque
 
 
@@ -114,39 +115,6 @@ player2 = {
 
 # =========================================================
 # WALL DATA
-#
-# horizontal_walls
-#
-# H(row, col)
-#
-# 2マス分の横壁
-#
-# 例：
-#
-# H(1, 2)
-#
-# B3 | B4
-# ---+---
-# C3 | C4
-#
-# B3,B4 と C3,C4 の間を塞ぐ
-#
-#
-# vertical_walls
-#
-# V(row, col)
-#
-# 2マス分の縦壁
-#
-# 例：
-#
-# V(1, 2)
-#
-# B3 --- B4
-#      |
-# C3 --- C4
-#
-# B3,C3 と B4,C4 の間を塞ぐ
 # =========================================================
 
 horizontal_walls = set()
@@ -162,6 +130,12 @@ turn = 1
 game_over = False
 
 mode = "move"
+
+scene = "title"
+
+cpu_mode = False
+
+cpu_level = 1
 
 
 # =========================================================
@@ -222,23 +196,14 @@ def mouse_to_cell(mouse_x, mouse_y):
 
 # =========================================================
 # WALL COLLISION
-#
-# ここが非常に重要
-#
-# 2マス分の壁のどちらかに接していれば通れない。
 # =========================================================
 
 def blocked(row1, col1, row2, col2):
-
-    # =====================================================
-    # UP
-    # =====================================================
 
     if row2 == row1 - 1:
 
         boundary_row = row2
 
-        # H(boundary_row, col1)
         if (
             boundary_row,
             col1
@@ -246,17 +211,12 @@ def blocked(row1, col1, row2, col2):
 
             return True
 
-        # H(boundary_row, col1 - 1)
         if (
             boundary_row,
             col1 - 1
         ) in horizontal_walls:
 
             return True
-
-    # =====================================================
-    # DOWN
-    # =====================================================
 
     elif row2 == row1 + 1:
 
@@ -276,10 +236,6 @@ def blocked(row1, col1, row2, col2):
 
             return True
 
-    # =====================================================
-    # LEFT
-    # =====================================================
-
     elif col2 == col1 - 1:
 
         boundary_col = col2
@@ -297,10 +253,6 @@ def blocked(row1, col1, row2, col2):
         ) in vertical_walls:
 
             return True
-
-    # =====================================================
-    # RIGHT
-    # =====================================================
 
     elif col2 == col1 + 1:
 
@@ -348,6 +300,7 @@ def get_neighbors(row, col):
             and
             0 <= nc < BOARD_SIZE
         ):
+
             continue
 
         if blocked(
@@ -356,6 +309,7 @@ def get_neighbors(row, col):
             nr,
             nc
         ):
+
             continue
 
         result.append(
@@ -390,20 +344,13 @@ def get_legal_moves(player):
         next_row = row + dr
         next_col = col + dc
 
-        # -------------------------------------------------
-        # BOARD LIMIT
-        # -------------------------------------------------
-
         if not (
             0 <= next_row < BOARD_SIZE
             and
             0 <= next_col < BOARD_SIZE
         ):
-            continue
 
-        # -------------------------------------------------
-        # WALL
-        # -------------------------------------------------
+            continue
 
         if blocked(
             row,
@@ -411,11 +358,8 @@ def get_legal_moves(player):
             next_row,
             next_col
         ):
-            continue
 
-        # -------------------------------------------------
-        # NORMAL MOVE
-        # -------------------------------------------------
+            continue
 
         if not (
             next_row == opponent["row"]
@@ -432,16 +376,8 @@ def get_legal_moves(player):
 
             continue
 
-        # =================================================
-        # OPPONENT IS NEXT
-        # =================================================
-
         jump_row = next_row + dr
         jump_col = next_col + dc
-
-        # =================================================
-        # STRAIGHT JUMP
-        # =================================================
 
         if (
             0 <= jump_row < BOARD_SIZE
@@ -464,10 +400,6 @@ def get_legal_moves(player):
                 )
 
                 continue
-
-        # =================================================
-        # SIDEWAYS
-        # =================================================
 
         if dr != 0:
 
@@ -502,6 +434,7 @@ def get_legal_moves(player):
                 and
                 0 <= side_col < BOARD_SIZE
             ):
+
                 continue
 
             if blocked(
@@ -510,6 +443,7 @@ def get_legal_moves(player):
                 side_row,
                 side_col
             ):
+
                 continue
 
             if (
@@ -517,6 +451,7 @@ def get_legal_moves(player):
                 and
                 side_col == opponent["col"]
             ):
+
                 continue
 
             moves.append(
@@ -586,330 +521,161 @@ def has_path(player):
 
 
 # =========================================================
-# CHECK WALL OVERLAP
-#
-# 壁が重なるかどうかをここで判定する。
-# =========================================================
-
-def horizontal_wall_overlaps(row, col):
-
-    # ---------------------------------------------
-    # 同じ壁
-    # ---------------------------------------------
-
-    if (
-        row,
-        col
-    ) in horizontal_walls:
-
-        return True
-
-    # ---------------------------------------------
-    # 左側の壁
-    #
-    # H(row,col-1)
-    #
-    # 例：
-    #
-    # B3-B4
-    # B4-B5
-    #
-    # はC4付近で重なる
-    # ---------------------------------------------
-
-    if (
-        row,
-        col - 1
-    ) in horizontal_walls:
-
-        return True
-
-    # ---------------------------------------------
-    # 右側の壁
-    # ---------------------------------------------
-
-    if (
-        row,
-        col + 1
-    ) in horizontal_walls:
-
-        return True
-
-    return False
-
-
-def vertical_wall_overlaps(row, col):
-
-    # ---------------------------------------------
-    # 同じ壁
-    # ---------------------------------------------
-
-    if (
-        row,
-        col
-    ) in vertical_walls:
-
-        return True
-
-    # ---------------------------------------------
-    # 上側の壁
-    # ---------------------------------------------
-
-    if (
-        row - 1,
-        col
-    ) in vertical_walls:
-
-        return True
-
-    # ---------------------------------------------
-    # 下側の壁
-    # ---------------------------------------------
-
-    if (
-        row + 1,
-        col
-    ) in vertical_walls:
-
-        return True
-
-    return False
-
-
-# =========================================================
-# WALL CROSS CHECK
-# =========================================================
-
-def horizontal_crosses_vertical(row, col):
-
-    # 横壁 H(row,col) が占有する位置：
-    #
-    # col
-    # col+1
-    #
-    # 縦壁 V(row,col) が交差する可能性がある。
-    #
-
-    if (
-        row,
-        col
-    ) in vertical_walls:
-
-        return True
-
-    if (
-        row + 1,
-        col
-    ) in vertical_walls:
-
-        return True
-
-    if (
-        row,
-        col + 1
-    ) in vertical_walls:
-
-        return True
-
-    if (
-        row + 1,
-        col + 1
-    ) in vertical_walls:
-
-        return True
-
-    return False
-
-
-def vertical_crosses_horizontal(row, col):
-
-    if (
-        row,
-        col
-    ) in horizontal_walls:
-
-        return True
-
-    if (
-        row,
-        col + 1
-    ) in horizontal_walls:
-
-        return True
-
-    if (
-        row + 1,
-        col
-    ) in horizontal_walls:
-
-        return True
-
-    if (
-        row + 1,
-        col + 1
-    ) in horizontal_walls:
-
-        return True
-
-    return False
-
-
-# =========================================================
 # WALL VALIDATION
 # =========================================================
 
 def can_place_wall(kind, row, col):
 
-    # =====================================================
-    # HORIZONTAL WALL
-    # =====================================================
-
     if kind == "H":
 
-        if not (0 <= row < 8 and 0 <= col < 8):
+        if not (
+            0 <= row < 8
+            and
+            0 <= col < 8
+        ):
+
             return False
 
-        # -------------------------------------------------
-        # 同じ壁
-        # -------------------------------------------------
+        if (
+            row,
+            col
+        ) in horizontal_walls:
 
-        if (row, col) in horizontal_walls:
             return False
 
-        # -------------------------------------------------
-        # 横壁同士の重なり
-        #
-        # H(row, col) は
-        # col ～ col+2 の境界を占有する
-        #
-        # そのため左右に隣接する横壁はNG
-        # -------------------------------------------------
+        if (
+            row,
+            col - 1
+        ) in horizontal_walls:
 
-        if (row, col - 1) in horizontal_walls:
             return False
 
-        if (row, col + 1) in horizontal_walls:
+        if (
+            row,
+            col + 1
+        ) in horizontal_walls:
+
             return False
 
-        # -------------------------------------------------
-        # 縦壁との重なり
-        #
-        # H(row,col)
-        #
-        # に対して、同じ境界を共有する縦壁
-        # は禁止する。
-        #
-        # ただし、次の行にある縦壁はOK。
-        # -------------------------------------------------
+        if (
+            row,
+            col
+        ) in vertical_walls:
 
-        if (row, col) in vertical_walls:
             return False
 
-        if (row - 1, col) in vertical_walls:
+        if (
+            row,
+            col + 1
+        ) in vertical_walls:
+
             return False
 
-        if (row, col + 1) in vertical_walls:
-            return False
-
-        if (row - 1, col + 1) in vertical_walls:
-            return False
-
-        # -------------------------------------------------
-        # 仮設置して経路チェック
-        # -------------------------------------------------
-
-        horizontal_walls.add((row, col))
+        horizontal_walls.add(
+            (
+                row,
+                col
+            )
+        )
 
         p1_ok = has_path(player1)
         p2_ok = has_path(player2)
 
-        horizontal_walls.remove((row, col))
+        horizontal_walls.remove(
+            (
+                row,
+                col
+            )
+        )
 
-        return p1_ok and p2_ok
-
-
-    # =====================================================
-    # VERTICAL WALL
-    # =====================================================
+        return (
+            p1_ok
+            and
+            p2_ok
+        )
 
     if kind == "V":
 
-        if not (0 <= row < 8 and 0 <= col < 8):
+        if not (
+            0 <= row < 8
+            and
+            0 <= col < 8
+        ):
+
             return False
 
-        # -------------------------------------------------
-        # 同じ壁
-        # -------------------------------------------------
+        if (
+            row,
+            col
+        ) in vertical_walls:
 
-        if (row, col) in vertical_walls:
             return False
 
-        # -------------------------------------------------
-        # 縦壁同士の重なり
-        # -------------------------------------------------
+        if (
+            row - 1,
+            col
+        ) in vertical_walls:
 
-        if (row - 1, col) in vertical_walls:
             return False
 
-        if (row + 1, col) in vertical_walls:
+        if (
+            row + 1,
+            col
+        ) in vertical_walls:
+
             return False
 
-        # -------------------------------------------------
-        # 横壁との重なり
-        #
-        # 例えば
-        #
-        # B3,B4
-        # C3,C4
-        #
-        # の間に横壁がある場合、
-        #
-        # B3,C3
-        # B4,C4
-        #
-        # の間の縦壁はNG。
-        #
-        # 一方、
-        #
-        # C3,D3
-        # C4,D4
-        #
-        # の間の縦壁はOK。
-        # -------------------------------------------------
+        if (
+            row,
+            col
+        ) in horizontal_walls:
 
-        if (row, col) in horizontal_walls:
             return False
 
-        if (row, col - 1) in horizontal_walls:
+        if (
+            row + 1,
+            col
+        ) in horizontal_walls:
+
             return False
 
-        # -------------------------------------------------
-        # 仮設置して経路チェック
-        # -------------------------------------------------
-
-        vertical_walls.add((row, col))
+        vertical_walls.add(
+            (
+                row,
+                col
+            )
+        )
 
         p1_ok = has_path(player1)
         p2_ok = has_path(player2)
 
-        vertical_walls.remove((row, col))
+        vertical_walls.remove(
+            (
+                row,
+                col
+            )
+        )
 
-        return p1_ok and p2_ok
-
+        return (
+            p1_ok
+            and
+            p2_ok
+        )
 
     return False
 
 # =========================================================
-# WALL FROM MOUSE
+# FIND WALL FROM MOUSE
 # =========================================================
 
-def wall_from_mouse(
-    mouse_x,
-    mouse_y
-):
+def wall_from_mouse(mouse_x, mouse_y):
 
     relative_x = mouse_x - BOARD_X
     relative_y = mouse_y - BOARD_Y
+
+    # -----------------------------------------------------
+    # 盤面外
+    # -----------------------------------------------------
 
     if (
         relative_x < -20
@@ -923,12 +689,12 @@ def wall_from_mouse(
 
         return None
 
+    # -----------------------------------------------------
+    # 縦のグリッド線
+    # -----------------------------------------------------
+
     vertical_line = round(
         relative_x / CELL_SIZE
-    )
-
-    horizontal_line = round(
-        relative_y / CELL_SIZE
     )
 
     vertical_distance = abs(
@@ -937,11 +703,23 @@ def wall_from_mouse(
         vertical_line * CELL_SIZE
     )
 
+    # -----------------------------------------------------
+    # 横のグリッド線
+    # -----------------------------------------------------
+
+    horizontal_line = round(
+        relative_y / CELL_SIZE
+    )
+
     horizontal_distance = abs(
         relative_y
         -
         horizontal_line * CELL_SIZE
     )
+
+    # -----------------------------------------------------
+    # 壁の近くではない
+    # -----------------------------------------------------
 
     if (
         vertical_distance > 18
@@ -951,9 +729,9 @@ def wall_from_mouse(
 
         return None
 
-    # =====================================================
-    # HORIZONTAL
-    # =====================================================
+    # -----------------------------------------------------
+    # HORIZONTAL WALL
+    # -----------------------------------------------------
 
     if horizontal_distance <= vertical_distance:
 
@@ -977,9 +755,9 @@ def wall_from_mouse(
             wall_col
         )
 
-    # =====================================================
-    # VERTICAL
-    # =====================================================
+    # -----------------------------------------------------
+    # VERTICAL WALL
+    # -----------------------------------------------------
 
     wall_row = int(
         relative_y // CELL_SIZE
@@ -1017,6 +795,10 @@ def draw_board():
                 col
             )
 
+            # -------------------------------------------------
+            # ゴールエリア
+            # -------------------------------------------------
+
             if row == 0:
 
                 color = GOAL_RED
@@ -1029,6 +811,10 @@ def draw_board():
 
                 color = WHITE
 
+            # -------------------------------------------------
+            # マス
+            # -------------------------------------------------
+
             pygame.draw.rect(
                 screen,
                 color,
@@ -1039,6 +825,10 @@ def draw_board():
                     CELL_SIZE
                 )
             )
+
+            # -------------------------------------------------
+            # グリッド
+            # -------------------------------------------------
 
             pygame.draw.rect(
                 screen,
@@ -1058,6 +848,10 @@ def draw_board():
 # =========================================================
 
 def draw_coordinates():
+
+    # -----------------------------------------------------
+    # ROW LETTERS
+    # -----------------------------------------------------
 
     for row in range(BOARD_SIZE):
 
@@ -1087,6 +881,10 @@ def draw_coordinates():
                 y
             )
         )
+
+    # -----------------------------------------------------
+    # COLUMN NUMBERS
+    # -----------------------------------------------------
 
     for col in range(BOARD_SIZE):
 
@@ -1124,9 +922,9 @@ def draw_coordinates():
 
 def draw_walls():
 
-    # =====================================================
-    # HORIZONTAL
-    # =====================================================
+    # -----------------------------------------------------
+    # HORIZONTAL WALLS
+    # -----------------------------------------------------
 
     for row, col in horizontal_walls:
 
@@ -1159,9 +957,9 @@ def draw_walls():
             WALL_WIDTH
         )
 
-    # =====================================================
-    # VERTICAL
-    # =====================================================
+    # -----------------------------------------------------
+    # VERTICAL WALLS
+    # -----------------------------------------------------
 
     for row, col in vertical_walls:
 
@@ -1202,14 +1000,17 @@ def draw_walls():
 def draw_wall_preview():
 
     if game_over:
+
         return
 
     if mode != "wall":
+
         return
 
     player = get_current_player()
 
     if player["walls"] <= 0:
+
         return
 
     mouse_x, mouse_y = pygame.mouse.get_pos()
@@ -1220,15 +1021,22 @@ def draw_wall_preview():
     )
 
     if wall is None:
+
         return
 
     kind, row, col = wall
 
-    if can_place_wall(
+    # -----------------------------------------------------
+    # 設置可能か確認
+    # -----------------------------------------------------
+
+    valid = can_place_wall(
         kind,
         row,
         col
-    ):
+    )
+
+    if valid:
 
         color = PREVIEW_VALID
 
@@ -1236,9 +1044,9 @@ def draw_wall_preview():
 
         color = PREVIEW_INVALID
 
-    # =====================================================
-    # HORIZONTAL
-    # =====================================================
+    # -----------------------------------------------------
+    # HORIZONTAL PREVIEW
+    # -----------------------------------------------------
 
     if kind == "H":
 
@@ -1271,9 +1079,9 @@ def draw_wall_preview():
             WALL_WIDTH
         )
 
-    # =====================================================
-    # VERTICAL
-    # =====================================================
+    # -----------------------------------------------------
+    # VERTICAL PREVIEW
+    # -----------------------------------------------------
 
     else:
 
@@ -1314,9 +1122,11 @@ def draw_wall_preview():
 def draw_legal_moves():
 
     if game_over:
+
         return
 
     if mode != "move":
+
         return
 
     player = get_current_player()
@@ -1399,6 +1209,10 @@ def draw_player(
         + CELL_SIZE // 2
     )
 
+    # -----------------------------------------------------
+    # Shadow
+    # -----------------------------------------------------
+
     pygame.draw.circle(
         screen,
         (100, 100, 100),
@@ -1408,6 +1222,10 @@ def draw_player(
         ),
         25
     )
+
+    # -----------------------------------------------------
+    # Player
+    # -----------------------------------------------------
 
     pygame.draw.circle(
         screen,
@@ -1419,6 +1237,10 @@ def draw_player(
         24
     )
 
+    # -----------------------------------------------------
+    # Border
+    # -----------------------------------------------------
+
     pygame.draw.circle(
         screen,
         BLACK,
@@ -1429,6 +1251,10 @@ def draw_player(
         24,
         2
     )
+
+    # -----------------------------------------------------
+    # Number
+    # -----------------------------------------------------
 
     text = large_font.render(
         str(number),
@@ -1479,6 +1305,10 @@ def position_text(player):
 
 def draw_information():
 
+    # -----------------------------------------------------
+    # TITLE
+    # -----------------------------------------------------
+
     title = title_font.render(
         "9x9 WALL GAME",
         True,
@@ -1502,11 +1332,13 @@ def draw_information():
         if turn == 1:
 
             turn_text = "PLAYER 1 WINS!"
+
             turn_color = BLUE
 
         else:
 
             turn_text = "PLAYER 2 WINS!"
+
             turn_color = RED
 
     else:
@@ -1516,8 +1348,11 @@ def draw_information():
         )
 
         if turn == 1:
+
             turn_color = BLUE
+
         else:
+
             turn_color = RED
 
     turn_surface = large_font.render(
@@ -1535,7 +1370,7 @@ def draw_information():
     )
 
     # -----------------------------------------------------
-    # PLAYER 1
+    # PLAYER 1 INFORMATION
     # -----------------------------------------------------
 
     p1_text = (
@@ -1558,7 +1393,7 @@ def draw_information():
     )
 
     # -----------------------------------------------------
-    # PLAYER 2
+    # PLAYER 2 INFORMATION
     # -----------------------------------------------------
 
     p2_text = (
@@ -1678,15 +1513,11 @@ def draw_reset_button():
 
     return button_rect
 
-
 # =========================================================
 # MOVE PLAYER
 # =========================================================
 
-def move_player(
-    row,
-    col
-):
+def move_player(row, col):
 
     global game_over
 
@@ -1698,22 +1529,20 @@ def move_player(
 
     player = get_current_player()
 
-    legal_moves = get_legal_moves(
-        player
-    )
+    legal_moves = get_legal_moves(player)
 
-    if (
-        row,
-        col
-    ) not in legal_moves:
-
+    if (row, col) not in legal_moves:
         return
+
+    # -----------------------------------------------------
+    # 移動
+    # -----------------------------------------------------
 
     player["row"] = row
     player["col"] = col
 
     # -----------------------------------------------------
-    # WIN
+    # 勝利判定
     # -----------------------------------------------------
 
     if check_win(player):
@@ -1721,6 +1550,10 @@ def move_player(
         game_over = True
 
         return
+
+    # -----------------------------------------------------
+    # ターン交代
+    # -----------------------------------------------------
 
     change_turn()
 
@@ -1768,7 +1601,7 @@ def place_wall():
     kind, row, col = wall
 
     # -----------------------------------------------------
-    # VALIDATION
+    # 壁を置けるか確認
     # -----------------------------------------------------
 
     if not can_place_wall(
@@ -1780,7 +1613,7 @@ def place_wall():
         return
 
     # -----------------------------------------------------
-    # ACTUAL PLACEMENT
+    # 実際に壁を設置
     # -----------------------------------------------------
 
     if kind == "H":
@@ -1802,13 +1635,13 @@ def place_wall():
         )
 
     # -----------------------------------------------------
-    # USE ONE WALL
+    # 壁を1枚消費
     # -----------------------------------------------------
 
     player["walls"] -= 1
 
     # -----------------------------------------------------
-    # CHANGE TURN
+    # ターン交代
     # -----------------------------------------------------
 
     change_turn()
@@ -1831,11 +1664,13 @@ def change_turn():
 
         turn = 1
 
+    # ターン交代時は移動モード
+
     mode = "move"
 
 
 # =========================================================
-# RESET
+# RESET GAME
 # =========================================================
 
 def reset_game():
@@ -1844,22 +1679,802 @@ def reset_game():
     global game_over
     global mode
 
+    # -----------------------------------------------------
+    # PLAYER 1
+    # -----------------------------------------------------
+
     player1["row"] = 0
     player1["col"] = 4
     player1["walls"] = 10
+
+    # -----------------------------------------------------
+    # PLAYER 2
+    # -----------------------------------------------------
 
     player2["row"] = 8
     player2["col"] = 4
     player2["walls"] = 10
 
+    # -----------------------------------------------------
+    # WALLS
+    # -----------------------------------------------------
+
     horizontal_walls.clear()
     vertical_walls.clear()
 
+    # -----------------------------------------------------
+    # GAME STATE
+    # -----------------------------------------------------
+
     turn = 1
-
     game_over = False
-
     mode = "move"
+
+
+# =========================================================
+# TITLE SCREEN
+# =========================================================
+
+def draw_title_screen():
+
+    screen.fill(
+        BACKGROUND
+    )
+
+    # -----------------------------------------------------
+    # TITLE
+    # -----------------------------------------------------
+
+    title = title_font.render(
+        "9x9 WALL GAME",
+        True,
+        BLACK
+    )
+
+    title_x = (
+        WINDOW_WIDTH // 2
+        -
+        title.get_width() // 2
+    )
+
+    screen.blit(
+        title,
+        (
+            title_x,
+            150
+        )
+    )
+
+    # -----------------------------------------------------
+    # SUBTITLE
+    # -----------------------------------------------------
+
+    subtitle = font.render(
+        "Choose Game Mode",
+        True,
+        BLACK
+    )
+
+    subtitle_x = (
+        WINDOW_WIDTH // 2
+        -
+        subtitle.get_width() // 2
+    )
+
+    screen.blit(
+        subtitle,
+        (
+            subtitle_x,
+            220
+        )
+    )
+
+    mouse_x, mouse_y = pygame.mouse.get_pos()
+
+    # -----------------------------------------------------
+    # PLAYER VS PLAYER
+    # -----------------------------------------------------
+
+    pvp_button = pygame.Rect(
+        250,
+        320,
+        350,
+        70
+    )
+
+    if pvp_button.collidepoint(
+        mouse_x,
+        mouse_y
+    ):
+
+        color = BUTTON_HOVER
+
+    else:
+
+        color = BUTTON_COLOR
+
+    pygame.draw.rect(
+        screen,
+        color,
+        pvp_button,
+        border_radius=10
+    )
+
+    pygame.draw.rect(
+        screen,
+        BLACK,
+        pvp_button,
+        2,
+        border_radius=10
+    )
+
+    pvp_text = font.render(
+        "PLAYER vs PLAYER",
+        True,
+        BLACK
+    )
+
+    screen.blit(
+        pvp_text,
+        (
+            pvp_button.centerx
+            -
+            pvp_text.get_width() // 2,
+            pvp_button.centery
+            -
+            pvp_text.get_height() // 2
+        )
+    )
+
+    # -----------------------------------------------------
+    # PLAYER VS CPU
+    # -----------------------------------------------------
+
+    cpu_button = pygame.Rect(
+        250,
+        430,
+        350,
+        70
+    )
+
+    if cpu_button.collidepoint(
+        mouse_x,
+        mouse_y
+    ):
+
+        color = BUTTON_HOVER
+
+    else:
+
+        color = BUTTON_COLOR
+
+    pygame.draw.rect(
+        screen,
+        color,
+        cpu_button,
+        border_radius=10
+    )
+
+    pygame.draw.rect(
+        screen,
+        BLACK,
+        cpu_button,
+        2,
+        border_radius=10
+    )
+
+    cpu_text = font.render(
+        "PLAYER vs CPU",
+        True,
+        BLACK
+    )
+
+    screen.blit(
+        cpu_text,
+        (
+            cpu_button.centerx
+            -
+            cpu_text.get_width() // 2,
+            cpu_button.centery
+            -
+            cpu_text.get_height() // 2
+        )
+    )
+
+    # -----------------------------------------------------
+    # CONTROLS
+    # -----------------------------------------------------
+
+    control_text = small_font.render(
+        "Move: Click a green circle   |   Wall: W",
+        True,
+        BLACK
+    )
+
+    screen.blit(
+        control_text,
+        (
+            WINDOW_WIDTH // 2
+            -
+            control_text.get_width() // 2,
+            560
+        )
+    )
+
+    return (
+        pvp_button,
+        cpu_button
+    )
+
+
+# =========================================================
+# CPU LEVEL SCREEN
+# =========================================================
+
+def draw_cpu_level_screen():
+
+    screen.fill(
+        BACKGROUND
+    )
+
+    # -----------------------------------------------------
+    # TITLE
+    # -----------------------------------------------------
+
+    title = title_font.render(
+        "SELECT CPU LEVEL",
+        True,
+        BLACK
+    )
+
+    title_x = (
+        WINDOW_WIDTH // 2
+        -
+        title.get_width() // 2
+    )
+
+    screen.blit(
+        title,
+        (
+            title_x,
+            150
+        )
+    )
+
+    mouse_x, mouse_y = pygame.mouse.get_pos()
+
+    # -----------------------------------------------------
+    # BUTTONS
+    # -----------------------------------------------------
+
+    level1_button = pygame.Rect(
+        250,
+        270,
+        350,
+        70
+    )
+
+    level2_button = pygame.Rect(
+        250,
+        370,
+        350,
+        70
+    )
+
+    level3_button = pygame.Rect(
+        250,
+        470,
+        350,
+        70
+    )
+
+    back_button = pygame.Rect(
+        330,
+        590,
+        190,
+        50
+    )
+
+    # -----------------------------------------------------
+    # LEVEL 1
+    # -----------------------------------------------------
+
+    if level1_button.collidepoint(
+        mouse_x,
+        mouse_y
+    ):
+
+        color = BUTTON_HOVER
+
+    else:
+
+        color = BUTTON_COLOR
+
+    pygame.draw.rect(
+        screen,
+        color,
+        level1_button,
+        border_radius=10
+    )
+
+    pygame.draw.rect(
+        screen,
+        BLACK,
+        level1_button,
+        2,
+        border_radius=10
+    )
+
+    level1_text = font.render(
+        "LEVEL 1 - EASY",
+        True,
+        BLACK
+    )
+
+    screen.blit(
+        level1_text,
+        (
+            level1_button.centerx
+            -
+            level1_text.get_width() // 2,
+            level1_button.centery
+            -
+            level1_text.get_height() // 2
+        )
+    )
+
+    # -----------------------------------------------------
+    # LEVEL 2
+    # -----------------------------------------------------
+
+    if level2_button.collidepoint(
+        mouse_x,
+        mouse_y
+    ):
+
+        color = BUTTON_HOVER
+
+    else:
+
+        color = BUTTON_COLOR
+
+    pygame.draw.rect(
+        screen,
+        color,
+        level2_button,
+        border_radius=10
+    )
+
+    pygame.draw.rect(
+        screen,
+        BLACK,
+        level2_button,
+        2,
+        border_radius=10
+    )
+
+    level2_text = font.render(
+        "LEVEL 2 - NORMAL",
+        True,
+        BLACK
+    )
+
+    screen.blit(
+        level2_text,
+        (
+            level2_button.centerx
+            -
+            level2_text.get_width() // 2,
+            level2_button.centery
+            -
+            level2_text.get_height() // 2
+        )
+    )
+
+    # -----------------------------------------------------
+    # LEVEL 3
+    # -----------------------------------------------------
+
+    if level3_button.collidepoint(
+        mouse_x,
+        mouse_y
+    ):
+
+        color = BUTTON_HOVER
+
+    else:
+
+        color = BUTTON_COLOR
+
+    pygame.draw.rect(
+        screen,
+        color,
+        level3_button,
+        border_radius=10
+    )
+
+    pygame.draw.rect(
+        screen,
+        BLACK,
+        level3_button,
+        2,
+        border_radius=10
+    )
+
+    level3_text = font.render(
+        "LEVEL 3 - HARD",
+        True,
+        BLACK
+    )
+
+    screen.blit(
+        level3_text,
+        (
+            level3_button.centerx
+            -
+            level3_text.get_width() // 2,
+            level3_button.centery
+            -
+            level3_text.get_height() // 2
+        )
+    )
+
+    # -----------------------------------------------------
+    # BACK
+    # -----------------------------------------------------
+
+    if back_button.collidepoint(
+        mouse_x,
+        mouse_y
+    ):
+
+        color = BUTTON_HOVER
+
+    else:
+
+        color = BUTTON_COLOR
+
+    pygame.draw.rect(
+        screen,
+        color,
+        back_button,
+        border_radius=8
+    )
+
+    pygame.draw.rect(
+        screen,
+        BLACK,
+        back_button,
+        2,
+        border_radius=8
+    )
+
+    back_text = small_font.render(
+        "BACK",
+        True,
+        BLACK
+    )
+
+    screen.blit(
+        back_text,
+        (
+            back_button.centerx
+            -
+            back_text.get_width() // 2,
+            back_button.centery
+            -
+            back_text.get_height() // 2
+        )
+    )
+
+    return (
+        level1_button,
+        level2_button,
+        level3_button,
+        back_button
+    )
+
+
+# =========================================================
+# CPU MOVE
+# =========================================================
+
+def cpu_move():
+
+    global game_over
+
+    if game_over:
+        return
+
+    cpu = player2
+
+    legal_moves = get_legal_moves(
+        cpu
+    )
+
+    if not legal_moves:
+        return
+
+    # -----------------------------------------------------
+    # LEVEL 1
+    # ランダム
+    # -----------------------------------------------------
+
+    if cpu_level == 1:
+
+        best_move = random.choice(
+            legal_moves
+        )
+
+    # -----------------------------------------------------
+    # LEVEL 2
+    # ゴールまでの距離を優先
+    # -----------------------------------------------------
+
+    elif cpu_level == 2:
+
+        best_move = min(
+            legal_moves,
+            key=lambda move: abs(
+                move[0] - cpu["goal"]
+            )
+        )
+
+    # -----------------------------------------------------
+    # LEVEL 3
+    # 最短経路を考える
+    # -----------------------------------------------------
+
+    else:
+
+        best_move = get_best_cpu_move()
+
+    # -----------------------------------------------------
+    # 移動
+    # -----------------------------------------------------
+
+    if best_move is not None:
+
+        cpu["row"] = best_move[0]
+        cpu["col"] = best_move[1]
+
+    # -----------------------------------------------------
+    # 勝利判定
+    # -----------------------------------------------------
+
+    if check_win(cpu):
+
+        game_over = True
+
+        return
+
+    change_turn()
+
+
+# =========================================================
+# CPU BEST MOVE
+# =========================================================
+
+def get_best_cpu_move():
+
+    cpu = player2
+
+    legal_moves = get_legal_moves(
+        cpu
+    )
+
+    if not legal_moves:
+        return None
+
+    best_move = None
+    best_distance = 999
+
+    for move in legal_moves:
+
+        row, col = move
+
+        distance = bfs_distance(
+            row,
+            col,
+            cpu["goal"]
+        )
+
+        if distance < best_distance:
+
+            best_distance = distance
+            best_move = move
+
+    return best_move
+
+
+# =========================================================
+# BFS DISTANCE
+# =========================================================
+
+def bfs_distance(
+    start_row,
+    start_col,
+    goal_row
+):
+
+    queue = deque()
+
+    queue.append(
+        (
+            start_row,
+            start_col,
+            0
+        )
+    )
+
+    visited = set()
+
+    visited.add(
+        (
+            start_row,
+            start_col
+        )
+    )
+
+    while queue:
+
+        row, col, distance = queue.popleft()
+
+        if row == goal_row:
+
+            return distance
+
+        for nr, nc in get_neighbors(
+            row,
+            col
+        ):
+
+            if (
+                nr,
+                nc
+            ) in visited:
+
+                continue
+
+            visited.add(
+                (
+                    nr,
+                    nc
+                )
+            )
+
+            queue.append(
+                (
+                    nr,
+                    nc,
+                    distance + 1
+                )
+            )
+
+    return 999
+
+
+# =========================================================
+# CPU WALL
+# =========================================================
+
+def cpu_place_wall():
+
+    cpu = player2
+
+    if cpu["walls"] <= 0:
+        return False
+
+    candidates = []
+
+    for row in range(8):
+
+        for col in range(8):
+
+            candidates.append(
+                ("H", row, col)
+            )
+
+            candidates.append(
+                ("V", row, col)
+            )
+
+    random.shuffle(
+        candidates
+    )
+
+    for kind, row, col in candidates:
+
+        if can_place_wall(
+            kind,
+            row,
+            col
+        ):
+
+            if kind == "H":
+
+                horizontal_walls.add(
+                    (
+                        row,
+                        col
+                    )
+                )
+
+            else:
+
+                vertical_walls.add(
+                    (
+                        row,
+                        col
+                    )
+                )
+
+            cpu["walls"] -= 1
+
+            return True
+
+    return False
+
+
+# =========================================================
+# CPU TURN
+# =========================================================
+
+def cpu_turn():
+
+    if not cpu_mode:
+        return
+
+    if game_over:
+        return
+
+    if turn != 2:
+        return
+
+    # -----------------------------------------------------
+    # LEVEL 1
+    # 移動だけ
+    # -----------------------------------------------------
+
+    if cpu_level == 1:
+
+        cpu_move()
+
+        return
+
+    # -----------------------------------------------------
+    # LEVEL 2
+    # 基本は移動
+    # -----------------------------------------------------
+
+    if cpu_level == 2:
+
+        cpu_move()
+
+        return
+
+    # -----------------------------------------------------
+    # LEVEL 3
+    # ときどき壁を置く
+    # -----------------------------------------------------
+
+    if cpu_level == 3:
+
+        # 壁を置くかどうか
+
+        if (
+            player2["walls"] > 0
+            and
+            random.random() < 0.25
+        ):
+
+            if cpu_place_wall():
+
+                change_turn()
+
+                return
+
+        cpu_move()
 
 
 # =========================================================
@@ -1877,7 +2492,7 @@ while running:
     for event in pygame.event.get():
 
         # -------------------------------------------------
-        # CLOSE
+        # WINDOW CLOSE
         # -------------------------------------------------
 
         if event.type == pygame.QUIT:
@@ -1890,24 +2505,75 @@ while running:
 
         elif event.type == pygame.KEYDOWN:
 
+            # =============================================
+            # TITLE
+            # =============================================
+
+            if scene == "title":
+
+                if event.key == pygame.K_ESCAPE:
+
+                    running = False
+
+                continue
+
+            # =============================================
+            # CPU SELECT
+            # =============================================
+
+            if scene == "cpu_select":
+
+                if event.key == pygame.K_ESCAPE:
+
+                    scene = "title"
+
+                continue
+
+            # =============================================
+            # GAME
+            # =============================================
+
+            # -------------------------------------------------
             # MOVE MODE
+            # -------------------------------------------------
+
             if event.key == pygame.K_m:
 
-                mode = "move"
+                if not game_over:
 
+                    mode = "move"
+
+            # -------------------------------------------------
             # WALL MODE
+            # -------------------------------------------------
+
             elif event.key == pygame.K_w:
 
                 if (
                     not game_over
                     and
-                    get_current_player()["walls"] > 0
+                    turn == 1
+                    and
+                    player1["walls"] > 0
                 ):
 
                     mode = "wall"
 
+            # -------------------------------------------------
             # RESET
+            # -------------------------------------------------
+
             elif event.key == pygame.K_r:
+
+                reset_game()
+
+            # -------------------------------------------------
+            # ESC
+            # -------------------------------------------------
+
+            elif event.key == pygame.K_ESCAPE:
+
+                scene = "title"
 
                 reset_game()
 
@@ -1917,100 +2583,290 @@ while running:
 
         elif event.type == pygame.MOUSEBUTTONDOWN:
 
-            if event.button == 1:
+            if event.button != 1:
 
-                mouse_x = event.pos[0]
-                mouse_y = event.pos[1]
+                continue
 
-                # -----------------------------------------
-                # RESET BUTTON
-                # -----------------------------------------
+            mouse_x = event.pos[0]
+            mouse_y = event.pos[1]
 
-                reset_button = pygame.Rect(
-                    680,
-                    20,
-                    110,
-                    40
+            # =============================================
+            # TITLE SCREEN
+            # =============================================
+
+            if scene == "title":
+
+                pvp_button = pygame.Rect(
+                    250,
+                    320,
+                    350,
+                    70
                 )
 
-                if reset_button.collidepoint(
+                cpu_button = pygame.Rect(
+                    250,
+                    430,
+                    350,
+                    70
+                )
+
+                # -----------------------------------------
+                # PLAYER VS PLAYER
+                # -----------------------------------------
+
+                if pvp_button.collidepoint(
                     mouse_x,
                     mouse_y
                 ):
 
+                    cpu_mode = False
+
+                    scene = "game"
+
                     reset_game()
 
-                    continue
-
                 # -----------------------------------------
-                # GAME OVER
+                # PLAYER VS CPU
                 # -----------------------------------------
 
-                if game_over:
-
-                    continue
-
-                # -----------------------------------------
-                # WALL MODE
-                # -----------------------------------------
-
-                if mode == "wall":
-
-                    place_wall()
-
-                    continue
-
-                # -----------------------------------------
-                # MOVE MODE
-                # -----------------------------------------
-
-                cell = mouse_to_cell(
+                elif cpu_button.collidepoint(
                     mouse_x,
                     mouse_y
+                ):
+
+                    cpu_mode = True
+
+                    scene = "cpu_select"
+
+                continue
+
+            # =============================================
+            # CPU LEVEL SELECT
+            # =============================================
+
+            if scene == "cpu_select":
+
+                level1_button = pygame.Rect(
+                    250,
+                    270,
+                    350,
+                    70
                 )
 
-                if cell is not None:
+                level2_button = pygame.Rect(
+                    250,
+                    370,
+                    350,
+                    70
+                )
 
-                    row, col = cell
+                level3_button = pygame.Rect(
+                    250,
+                    470,
+                    350,
+                    70
+                )
 
-                    move_player(
-                        row,
-                        col
-                    )
+                back_button = pygame.Rect(
+                    330,
+                    590,
+                    190,
+                    50
+                )
+
+                # -----------------------------------------
+                # LEVEL 1
+                # -----------------------------------------
+
+                if level1_button.collidepoint(
+                    mouse_x,
+                    mouse_y
+                ):
+
+                    cpu_level = 1
+
+                    scene = "game"
+
+                    reset_game()
+
+                # -----------------------------------------
+                # LEVEL 2
+                # -----------------------------------------
+
+                elif level2_button.collidepoint(
+                    mouse_x,
+                    mouse_y
+                ):
+
+                    cpu_level = 2
+
+                    scene = "game"
+
+                    reset_game()
+
+                # -----------------------------------------
+                # LEVEL 3
+                # -----------------------------------------
+
+                elif level3_button.collidepoint(
+                    mouse_x,
+                    mouse_y
+                ):
+
+                    cpu_level = 3
+
+                    scene = "game"
+
+                    reset_game()
+
+                # -----------------------------------------
+                # BACK
+                # -----------------------------------------
+
+                elif back_button.collidepoint(
+                    mouse_x,
+                    mouse_y
+                ):
+
+                    scene = "title"
+
+                continue
+
+            # =============================================
+            # GAME SCREEN
+            # =============================================
+
+            reset_button = pygame.Rect(
+                680,
+                20,
+                110,
+                40
+            )
+
+            # ---------------------------------------------
+            # RESET
+            # ---------------------------------------------
+
+            if reset_button.collidepoint(
+                mouse_x,
+                mouse_y
+            ):
+
+                reset_game()
+
+                continue
+
+            # ---------------------------------------------
+            # GAME OVER
+            # ---------------------------------------------
+
+            if game_over:
+
+                continue
+
+            # ---------------------------------------------
+            # CPU TURN
+            # ---------------------------------------------
+
+            if (
+                cpu_mode
+                and
+                turn == 2
+            ):
+
+                continue
+
+            # ---------------------------------------------
+            # WALL MODE
+            # ---------------------------------------------
+
+            if mode == "wall":
+
+                place_wall()
+
+                continue
+
+            # ---------------------------------------------
+            # MOVE MODE
+            # ---------------------------------------------
+
+            cell = mouse_to_cell(
+                mouse_x,
+                mouse_y
+            )
+
+            if cell is not None:
+
+                row, col = cell
+
+                move_player(
+                    row,
+                    col
+                )
+
+    # =====================================================
+    # CPU
+    # =====================================================
+
+    if (
+        scene == "game"
+        and
+        cpu_mode
+        and
+        turn == 2
+        and
+        not game_over
+    ):
+
+        cpu_turn()
 
     # =====================================================
     # DRAW
     # =====================================================
 
-    screen.fill(
-        BACKGROUND
-    )
+    if scene == "title":
 
-    draw_board()
+        draw_title_screen()
 
-    draw_coordinates()
+    elif scene == "cpu_select":
 
-    draw_walls()
+        draw_cpu_level_screen()
 
-    draw_wall_preview()
+    else:
 
-    draw_legal_moves()
+        screen.fill(
+            BACKGROUND
+        )
 
-    draw_player(
-        player1,
-        BLUE,
-        1
-    )
+        draw_board()
 
-    draw_player(
-        player2,
-        RED,
-        2
-    )
+        draw_coordinates()
 
-    draw_information()
+        draw_walls()
 
-    draw_reset_button()
+        draw_wall_preview()
+
+        draw_legal_moves()
+
+        draw_player(
+            player1,
+            BLUE,
+            1
+        )
+
+        draw_player(
+            player2,
+            RED,
+            2
+        )
+
+        draw_information()
+
+        draw_reset_button()
+
+    # =====================================================
+    # UPDATE
+    # =====================================================
 
     pygame.display.flip()
 
