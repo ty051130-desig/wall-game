@@ -60,7 +60,7 @@ screen = pygame.display.set_mode(
 )
 
 pygame.display.set_caption(
-    "9x9 WALL GAME"
+    "9x9 WALL GAME - Version 5"
 )
 
 clock = pygame.time.Clock()
@@ -115,38 +115,34 @@ player2 = {
 # =========================================================
 # WALL DATA
 #
-# horizontal_walls
+# H(row,col)
 #
-# H(row, col)
+# 横壁
 #
-# 2マス分の横壁
+# (row,col)       (row,col+1)       (row,col+2)
+#        -----------------------
 #
-# 例：
+# H(3,3)なら
 #
-# H(1, 2)
-#
-# B3 | B4
-# ---+---
-# C3 | C4
-#
-# B3,B4 と C3,C4 の間を塞ぐ
+# D4     D5
+# --------------
+# E4     E5
 #
 #
-# vertical_walls
+# V(row,col)
 #
-# V(row, col)
+# 縦壁
 #
-# 2マス分の縦壁
+# (row,col)     (row,col+1)
+#                  |
+#                  |
+# (row+1,col)   (row+1,col+1)
 #
-# 例：
+# V(3,3)なら
 #
-# V(1, 2)
+# D4 | D5
+# E4 | E5
 #
-# B3 --- B4
-#      |
-# C3 --- C4
-#
-# B3,C3 と B4,C4 の間を塞ぐ
 # =========================================================
 
 horizontal_walls = set()
@@ -161,6 +157,7 @@ turn = 1
 
 game_over = False
 
+# move / wall
 mode = "move"
 
 
@@ -222,10 +219,6 @@ def mouse_to_cell(mouse_x, mouse_y):
 
 # =========================================================
 # WALL COLLISION
-#
-# ここが非常に重要
-#
-# 2マス分の壁のどちらかに接していれば通れない。
 # =========================================================
 
 def blocked(row1, col1, row2, col2):
@@ -262,6 +255,7 @@ def blocked(row1, col1, row2, col2):
 
         boundary_row = row1
 
+        # H(boundary_row, col1)
         if (
             boundary_row,
             col1
@@ -269,6 +263,7 @@ def blocked(row1, col1, row2, col2):
 
             return True
 
+        # H(boundary_row, col1 - 1)
         if (
             boundary_row,
             col1 - 1
@@ -284,6 +279,7 @@ def blocked(row1, col1, row2, col2):
 
         boundary_col = col2
 
+        # V(row1, boundary_col)
         if (
             row1,
             boundary_col
@@ -291,6 +287,7 @@ def blocked(row1, col1, row2, col2):
 
             return True
 
+        # V(row1 - 1, boundary_col)
         if (
             row1 - 1,
             boundary_col
@@ -306,6 +303,7 @@ def blocked(row1, col1, row2, col2):
 
         boundary_col = col1
 
+        # V(row1, boundary_col)
         if (
             row1,
             boundary_col
@@ -313,6 +311,7 @@ def blocked(row1, col1, row2, col2):
 
             return True
 
+        # V(row1 - 1, boundary_col)
         if (
             row1 - 1,
             boundary_col
@@ -348,6 +347,7 @@ def get_neighbors(row, col):
             and
             0 <= nc < BOARD_SIZE
         ):
+
             continue
 
         if blocked(
@@ -356,6 +356,7 @@ def get_neighbors(row, col):
             nr,
             nc
         ):
+
             continue
 
         result.append(
@@ -399,6 +400,7 @@ def get_legal_moves(player):
             and
             0 <= next_col < BOARD_SIZE
         ):
+
             continue
 
         # -------------------------------------------------
@@ -411,11 +413,12 @@ def get_legal_moves(player):
             next_row,
             next_col
         ):
+
             continue
 
-        # -------------------------------------------------
+        # =================================================
         # NORMAL MOVE
-        # -------------------------------------------------
+        # =================================================
 
         if not (
             next_row == opponent["row"]
@@ -502,6 +505,7 @@ def get_legal_moves(player):
                 and
                 0 <= side_col < BOARD_SIZE
             ):
+
                 continue
 
             if blocked(
@@ -510,6 +514,7 @@ def get_legal_moves(player):
                 side_row,
                 side_col
             ):
+
                 continue
 
             if (
@@ -517,6 +522,7 @@ def get_legal_moves(player):
                 and
                 side_col == opponent["col"]
             ):
+
                 continue
 
             moves.append(
@@ -586,331 +592,196 @@ def has_path(player):
 
 
 # =========================================================
-# CHECK WALL OVERLAP
-#
-# 壁が重なるかどうかをここで判定する。
-# =========================================================
-
-def horizontal_wall_overlaps(row, col):
-
-    # ---------------------------------------------
-    # 同じ壁
-    # ---------------------------------------------
-
-    if (
-        row,
-        col
-    ) in horizontal_walls:
-
-        return True
-
-    # ---------------------------------------------
-    # 左側の壁
-    #
-    # H(row,col-1)
-    #
-    # 例：
-    #
-    # B3-B4
-    # B4-B5
-    #
-    # はC4付近で重なる
-    # ---------------------------------------------
-
-    if (
-        row,
-        col - 1
-    ) in horizontal_walls:
-
-        return True
-
-    # ---------------------------------------------
-    # 右側の壁
-    # ---------------------------------------------
-
-    if (
-        row,
-        col + 1
-    ) in horizontal_walls:
-
-        return True
-
-    return False
-
-
-def vertical_wall_overlaps(row, col):
-
-    # ---------------------------------------------
-    # 同じ壁
-    # ---------------------------------------------
-
-    if (
-        row,
-        col
-    ) in vertical_walls:
-
-        return True
-
-    # ---------------------------------------------
-    # 上側の壁
-    # ---------------------------------------------
-
-    if (
-        row - 1,
-        col
-    ) in vertical_walls:
-
-        return True
-
-    # ---------------------------------------------
-    # 下側の壁
-    # ---------------------------------------------
-
-    if (
-        row + 1,
-        col
-    ) in vertical_walls:
-
-        return True
-
-    return False
-
-
-# =========================================================
-# WALL CROSS CHECK
-# =========================================================
-
-def horizontal_crosses_vertical(row, col):
-
-    # 横壁 H(row,col) が占有する位置：
-    #
-    # col
-    # col+1
-    #
-    # 縦壁 V(row,col) が交差する可能性がある。
-    #
-
-    if (
-        row,
-        col
-    ) in vertical_walls:
-
-        return True
-
-    if (
-        row + 1,
-        col
-    ) in vertical_walls:
-
-        return True
-
-    if (
-        row,
-        col + 1
-    ) in vertical_walls:
-
-        return True
-
-    if (
-        row + 1,
-        col + 1
-    ) in vertical_walls:
-
-        return True
-
-    return False
-
-
-def vertical_crosses_horizontal(row, col):
-
-    if (
-        row,
-        col
-    ) in horizontal_walls:
-
-        return True
-
-    if (
-        row,
-        col + 1
-    ) in horizontal_walls:
-
-        return True
-
-    if (
-        row + 1,
-        col
-    ) in horizontal_walls:
-
-        return True
-
-    if (
-        row + 1,
-        col + 1
-    ) in horizontal_walls:
-
-        return True
-
-    return False
-
-
-# =========================================================
 # WALL VALIDATION
 # =========================================================
 
-def can_place_wall(kind, row, col):
+def can_place_wall(
+    kind,
+    row,
+    col
+):
 
     # =====================================================
-    # HORIZONTAL WALL
+    # HORIZONTAL
     # =====================================================
 
     if kind == "H":
 
-        if not (0 <= row < 8 and 0 <= col < 8):
+        if not (
+            0 <= row < 8
+            and
+            0 <= col < 8
+        ):
+
             return False
 
-        # -------------------------------------------------
-        # 同じ壁
-        # -------------------------------------------------
+        # Same wall
+        if (
+            row,
+            col
+        ) in horizontal_walls:
 
-        if (row, col) in horizontal_walls:
             return False
 
-        # -------------------------------------------------
-        # 横壁同士の重なり
-        #
-        # H(row, col) は
-        # col ～ col+2 の境界を占有する
-        #
-        # そのため左右に隣接する横壁はNG
-        # -------------------------------------------------
+        # Adjacent horizontal wall
+        if (
+            row,
+            col - 1
+        ) in horizontal_walls:
 
-        if (row, col - 1) in horizontal_walls:
             return False
 
-        if (row, col + 1) in horizontal_walls:
+        if (
+            row,
+            col + 1
+        ) in horizontal_walls:
+
             return False
 
-        # -------------------------------------------------
-        # 縦壁との重なり
-        #
-        # H(row,col)
-        #
-        # に対して、同じ境界を共有する縦壁
-        # は禁止する。
-        #
-        # ただし、次の行にある縦壁はOK。
-        # -------------------------------------------------
+        # Crossing vertical wall
+        if (
+            row,
+            col
+        ) in vertical_walls:
 
-        if (row, col) in vertical_walls:
             return False
 
-        if (row - 1, col) in vertical_walls:
+        if (
+            row,
+            col + 1
+        ) in vertical_walls:
+
             return False
 
-        if (row, col + 1) in vertical_walls:
-            return False
+        # Temporary placement
+        horizontal_walls.add(
+            (
+                row,
+                col
+            )
+        )
 
-        if (row - 1, col + 1) in vertical_walls:
-            return False
+        p1_ok = has_path(
+            player1
+        )
 
-        # -------------------------------------------------
-        # 仮設置して経路チェック
-        # -------------------------------------------------
+        p2_ok = has_path(
+            player2
+        )
 
-        horizontal_walls.add((row, col))
+        # Remove temporary wall
+        horizontal_walls.remove(
+            (
+                row,
+                col
+            )
+        )
 
-        p1_ok = has_path(player1)
-        p2_ok = has_path(player2)
-
-        horizontal_walls.remove((row, col))
-
-        return p1_ok and p2_ok
-
+        return (
+            p1_ok
+            and
+            p2_ok
+        )
 
     # =====================================================
-    # VERTICAL WALL
+    # VERTICAL
     # =====================================================
 
     if kind == "V":
 
-        if not (0 <= row < 8 and 0 <= col < 8):
+        if not (
+            0 <= row < 8
+            and
+            0 <= col < 8
+        ):
+
             return False
 
-        # -------------------------------------------------
-        # 同じ壁
-        # -------------------------------------------------
+        # Same wall
+        if (
+            row,
+            col
+        ) in vertical_walls:
 
-        if (row, col) in vertical_walls:
             return False
 
-        # -------------------------------------------------
-        # 縦壁同士の重なり
-        # -------------------------------------------------
+        # Adjacent vertical wall
+        if (
+            row - 1,
+            col
+        ) in vertical_walls:
 
-        if (row - 1, col) in vertical_walls:
             return False
 
-        if (row + 1, col) in vertical_walls:
+        if (
+            row + 1,
+            col
+        ) in vertical_walls:
+
             return False
 
-        # -------------------------------------------------
-        # 横壁との重なり
-        #
-        # 例えば
-        #
-        # B3,B4
-        # C3,C4
-        #
-        # の間に横壁がある場合、
-        #
-        # B3,C3
-        # B4,C4
-        #
-        # の間の縦壁はNG。
-        #
-        # 一方、
-        #
-        # C3,D3
-        # C4,D4
-        #
-        # の間の縦壁はOK。
-        # -------------------------------------------------
+        # Crossing horizontal wall
+        if (
+            row,
+            col
+        ) in horizontal_walls:
 
-        if (row, col) in horizontal_walls:
             return False
 
-        if (row, col - 1) in horizontal_walls:
+        if (
+            row + 1,
+            col
+        ) in horizontal_walls:
+
             return False
 
-        # -------------------------------------------------
-        # 仮設置して経路チェック
-        # -------------------------------------------------
+        # Temporary placement
+        vertical_walls.add(
+            (
+                row,
+                col
+            )
+        )
 
-        vertical_walls.add((row, col))
+        p1_ok = has_path(
+            player1
+        )
 
-        p1_ok = has_path(player1)
-        p2_ok = has_path(player2)
+        p2_ok = has_path(
+            player2
+        )
 
-        vertical_walls.remove((row, col))
+        # Remove temporary wall
+        vertical_walls.remove(
+            (
+                row,
+                col
+            )
+        )
 
-        return p1_ok and p2_ok
-
+        return (
+            p1_ok
+            and
+            p2_ok
+        )
 
     return False
 
+
 # =========================================================
-# WALL FROM MOUSE
+# FIND WALL FROM MOUSE
+#
+# マウスに最も近い壁を探す
 # =========================================================
 
-def wall_from_mouse(
-    mouse_x,
-    mouse_y
-):
+def wall_from_mouse(mouse_x, mouse_y):
+
+    # 盤面からの相対位置
 
     relative_x = mouse_x - BOARD_X
     relative_y = mouse_y - BOARD_Y
 
+    # 盤面外
     if (
         relative_x < -20
         or
@@ -923,12 +794,12 @@ def wall_from_mouse(
 
         return None
 
+    # -----------------------------------------------------
+    # 最も近い縦のグリッド線
+    # -----------------------------------------------------
+
     vertical_line = round(
         relative_x / CELL_SIZE
-    )
-
-    horizontal_line = round(
-        relative_y / CELL_SIZE
     )
 
     vertical_distance = abs(
@@ -937,12 +808,21 @@ def wall_from_mouse(
         vertical_line * CELL_SIZE
     )
 
+    # -----------------------------------------------------
+    # 最も近い横のグリッド線
+    # -----------------------------------------------------
+
+    horizontal_line = round(
+        relative_y / CELL_SIZE
+    )
+
     horizontal_distance = abs(
         relative_y
         -
         horizontal_line * CELL_SIZE
     )
 
+    # 壁の近くでない
     if (
         vertical_distance > 18
         and
@@ -952,7 +832,7 @@ def wall_from_mouse(
         return None
 
     # =====================================================
-    # HORIZONTAL
+    # HORIZONTAL WALL
     # =====================================================
 
     if horizontal_distance <= vertical_distance:
@@ -978,7 +858,7 @@ def wall_from_mouse(
         )
 
     # =====================================================
-    # VERTICAL
+    # VERTICAL WALL
     # =====================================================
 
     wall_row = int(
@@ -1016,6 +896,8 @@ def draw_board():
                 row,
                 col
             )
+
+            # Goal area
 
             if row == 0:
 
@@ -1059,6 +941,8 @@ def draw_board():
 
 def draw_coordinates():
 
+    # Rows
+
     for row in range(BOARD_SIZE):
 
         letter = chr(
@@ -1087,6 +971,8 @@ def draw_coordinates():
                 y
             )
         )
+
+    # Columns
 
     for col in range(BOARD_SIZE):
 
@@ -1202,14 +1088,17 @@ def draw_walls():
 def draw_wall_preview():
 
     if game_over:
+
         return
 
     if mode != "wall":
+
         return
 
     player = get_current_player()
 
     if player["walls"] <= 0:
+
         return
 
     mouse_x, mouse_y = pygame.mouse.get_pos()
@@ -1220,15 +1109,18 @@ def draw_wall_preview():
     )
 
     if wall is None:
+
         return
 
     kind, row, col = wall
 
-    if can_place_wall(
+    valid = can_place_wall(
         kind,
         row,
         col
-    ):
+    )
+
+    if valid:
 
         color = PREVIEW_VALID
 
@@ -1237,7 +1129,7 @@ def draw_wall_preview():
         color = PREVIEW_INVALID
 
     # =====================================================
-    # HORIZONTAL
+    # HORIZONTAL PREVIEW
     # =====================================================
 
     if kind == "H":
@@ -1272,7 +1164,7 @@ def draw_wall_preview():
         )
 
     # =====================================================
-    # VERTICAL
+    # VERTICAL PREVIEW
     # =====================================================
 
     else:
@@ -1314,9 +1206,11 @@ def draw_wall_preview():
 def draw_legal_moves():
 
     if game_over:
+
         return
 
     if mode != "move":
+
         return
 
     player = get_current_player()
@@ -1479,6 +1373,10 @@ def position_text(player):
 
 def draw_information():
 
+    # -----------------------------------------------------
+    # TITLE
+    # -----------------------------------------------------
+
     title = title_font.render(
         "9x9 WALL GAME",
         True,
@@ -1502,11 +1400,13 @@ def draw_information():
         if turn == 1:
 
             turn_text = "PLAYER 1 WINS!"
+
             turn_color = BLUE
 
         else:
 
             turn_text = "PLAYER 2 WINS!"
+
             turn_color = RED
 
     else:
@@ -1516,8 +1416,11 @@ def draw_information():
         )
 
         if turn == 1:
+
             turn_color = BLUE
+
         else:
+
             turn_color = RED
 
     turn_surface = large_font.render(
@@ -1535,7 +1438,7 @@ def draw_information():
     )
 
     # -----------------------------------------------------
-    # PLAYER 1
+    # P1
     # -----------------------------------------------------
 
     p1_text = (
@@ -1558,7 +1461,7 @@ def draw_information():
     )
 
     # -----------------------------------------------------
-    # PLAYER 2
+    # P2
     # -----------------------------------------------------
 
     p2_text = (
@@ -1691,9 +1594,11 @@ def move_player(
     global game_over
 
     if game_over:
+
         return
 
     if mode != "move":
+
         return
 
     player = get_current_player()
@@ -1745,14 +1650,17 @@ def check_win(player):
 def place_wall():
 
     if game_over:
+
         return
 
     if mode != "wall":
+
         return
 
     player = get_current_player()
 
     if player["walls"] <= 0:
+
         return
 
     mouse_x, mouse_y = pygame.mouse.get_pos()
@@ -1763,6 +1671,7 @@ def place_wall():
     )
 
     if wall is None:
+
         return
 
     kind, row, col = wall
@@ -1890,12 +1799,18 @@ while running:
 
         elif event.type == pygame.KEYDOWN:
 
+            # ---------------------------------------------
             # MOVE MODE
+            # ---------------------------------------------
+
             if event.key == pygame.K_m:
 
                 mode = "move"
 
+            # ---------------------------------------------
             # WALL MODE
+            # ---------------------------------------------
+
             elif event.key == pygame.K_w:
 
                 if (
@@ -1906,7 +1821,10 @@ while running:
 
                     mode = "wall"
 
+            # ---------------------------------------------
             # RESET
+            # ---------------------------------------------
+
             elif event.key == pygame.K_r:
 
                 reset_game()
@@ -1992,8 +1910,10 @@ while running:
 
     draw_walls()
 
+    # 壁プレビュー
     draw_wall_preview()
 
+    # 移動可能マス
     draw_legal_moves()
 
     draw_player(
