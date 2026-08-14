@@ -21,6 +21,9 @@ FPS = 60
 
 WALL_WIDTH = 12
 
+# CPUの思考時間
+CPU_THINK_TIME = 500
+
 
 # =========================================================
 # COLORS
@@ -140,9 +143,6 @@ turn = 1
 
 game_over = False
 
-# CPUのターン開始時間
-cpu_wait_start = None
-
 # move / wall
 mode = "move"
 
@@ -159,19 +159,9 @@ cpu_mode = False
 # 3 = Hard
 cpu_level = 1
 
-
-# =========================================================
 # CPU THINKING
-# =========================================================
-
-# CPUが考え始めた時刻
-cpu_thinking_start = None
-
-# CPUの思考時間（ミリ秒）
-CPU_THINK_TIME = 500
-
-# CPUが現在考え中か
 cpu_thinking = False
+cpu_thinking_start = 0
 
 
 # =========================================================
@@ -372,176 +362,13 @@ def get_neighbors(row, col):
 
 
 # =========================================================
-# LEGAL MOVES
-# =========================================================
-
-def get_legal_moves(player):
-
-    row = player["row"]
-    col = player["col"]
-
-    opponent = get_opponent(player)
-
-    moves = []
-
-    directions = [
-        (-1, 0),
-        (1, 0),
-        (0, -1),
-        (0, 1)
-    ]
-
-    for dr, dc in directions:
-
-        next_row = row + dr
-        next_col = col + dc
-
-        if not (
-            0 <= next_row < BOARD_SIZE
-            and
-            0 <= next_col < BOARD_SIZE
-        ):
-
-            continue
-
-        if blocked(
-            row,
-            col,
-            next_row,
-            next_col
-        ):
-
-            continue
-
-        # =================================================
-        # NORMAL MOVE
-        # =================================================
-
-        if not (
-            next_row == opponent["row"]
-            and
-            next_col == opponent["col"]
-        ):
-
-            moves.append(
-                (
-                    next_row,
-                    next_col
-                )
-            )
-
-            continue
-
-        # =================================================
-        # OPPONENT IS NEXT
-        # =================================================
-
-        jump_row = next_row + dr
-        jump_col = next_col + dc
-
-        # =================================================
-        # STRAIGHT JUMP
-        # =================================================
-
-        if (
-            0 <= jump_row < BOARD_SIZE
-            and
-            0 <= jump_col < BOARD_SIZE
-        ):
-
-            if not blocked(
-                next_row,
-                next_col,
-                jump_row,
-                jump_col
-            ):
-
-                moves.append(
-                    (
-                        jump_row,
-                        jump_col
-                    )
-                )
-
-                continue
-
-        # =================================================
-        # SIDEWAYS
-        # =================================================
-
-        if dr != 0:
-
-            side_positions = [
-                (
-                    next_row,
-                    next_col - 1
-                ),
-                (
-                    next_row,
-                    next_col + 1
-                )
-            ]
-
-        else:
-
-            side_positions = [
-                (
-                    next_row - 1,
-                    next_col
-                ),
-                (
-                    next_row + 1,
-                    next_col
-                )
-            ]
-
-        for side_row, side_col in side_positions:
-
-            if not (
-                0 <= side_row < BOARD_SIZE
-                and
-                0 <= side_col < BOARD_SIZE
-            ):
-
-                continue
-
-            if blocked(
-                next_row,
-                next_col,
-                side_row,
-                side_col
-            ):
-
-                continue
-
-            if (
-                side_row == opponent["row"]
-                and
-                side_col == opponent["col"]
-            ):
-
-                continue
-
-            moves.append(
-                (
-                    side_row,
-                    side_col
-                )
-            )
-
-    return moves
-
-
-# =========================================================
-# PATH DISTANCE
+# SHORTEST PATH
 #
-# CPUの強化で使用する。
-#
-# 最短経路が存在すれば、その距離を返す。
-# 経路がなければ999を返す。
+# CPUが実際の壁を考慮して
+# ゴールまでの最短距離を計算する
 # =========================================================
 
-def get_path_distance(player):
+def get_shortest_path(player):
 
     start = (
         player["row"],
@@ -555,7 +382,7 @@ def get_path_distance(player):
     queue.append(
         (
             start,
-            0
+            [start]
         )
     )
 
@@ -565,48 +392,201 @@ def get_path_distance(player):
 
     while queue:
 
-        (row, col), distance = queue.popleft()
+        current, path = queue.popleft()
 
+        row, col = current
+
+        # ゴール到達
         if row == goal_row:
 
-            return distance
+            return path
 
         for nr, nc in get_neighbors(
             row,
             col
         ):
 
-            position = (
+            next_position = (
                 nr,
                 nc
             )
 
-            if position in visited:
-
+            if next_position in visited:
                 continue
 
-            visited.add(position)
+            visited.add(
+                next_position
+            )
+
+            new_path = path + [
+                next_position
+            ]
 
             queue.append(
                 (
-                    position,
-                    distance + 1
+                    next_position,
+                    new_path
                 )
             )
 
-    return 999
+    # 通常は到達不能にならない
+    return None
 
 
 # =========================================================
-# PATH CHECK
+# SHORTEST DISTANCE
+#
+# ゴールまでの最短距離だけを返す
+# =========================================================
+
+def get_shortest_distance(player):
+
+    path = get_shortest_path(
+        player
+    )
+
+    if path is None:
+
+        return 999
+
+    # pathには現在地も含まれるため -1
+    return len(path) - 1
+
+
+# =========================================================
+# PATH DIRECTION
+#
+# 最短経路の次のマスを取得
+# =========================================================
+
+def get_next_path_position(player):
+
+    path = get_shortest_path(
+        player
+    )
+
+    if path is None:
+        return None
+
+    if len(path) < 2:
+        return None
+
+    return path[1]
+
+
+# =========================================================
+# PATH INFORMATION
+#
+# CPUが現在の盤面を分析するための情報
+# =========================================================
+
+def analyze_position():
+
+    cpu_distance = get_shortest_distance(
+        player2
+    )
+
+    player_distance = get_shortest_distance(
+        player1
+    )
+
+    cpu_next = get_next_path_position(
+        player2
+    )
+
+    player_next = get_next_path_position(
+        player1
+    )
+
+    return {
+        "cpu_distance": cpu_distance,
+        "player_distance": player_distance,
+        "cpu_next": cpu_next,
+        "player_next": player_next
+    }
+
+
+# =========================================================
+# CPU ADVANTAGE
+#
+# CPU側がどれくらい有利か
+# 数字が大きいほどCPU有利
+# =========================================================
+
+def get_cpu_advantage():
+
+    cpu_distance = get_shortest_distance(
+        player2
+    )
+
+    player_distance = get_shortest_distance(
+        player1
+    )
+
+    return (
+        player_distance
+        -
+        cpu_distance
+    )
+
+# =========================================================
+# WALL VALIDATION
 # =========================================================
 
 def has_path(player):
 
-    return get_path_distance(player) < 999
+    start = (
+        player["row"],
+        player["col"]
+    )
+
+    goal_row = player["goal"]
+
+    queue = deque()
+
+    queue.append(start)
+
+    visited = set()
+
+    visited.add(start)
+
+    while queue:
+
+        row, col = queue.popleft()
+
+        if row == goal_row:
+
+            return True
+
+        for nr, nc in get_neighbors(
+            row,
+            col
+        ):
+
+            if (
+                nr,
+                nc
+            ) not in visited:
+
+                visited.add(
+                    (
+                        nr,
+                        nc
+                    )
+                )
+
+                queue.append(
+                    (
+                        nr,
+                        nc
+                    )
+                )
+
+    return False
+
 
 # =========================================================
-# WALL VALIDATION
+# WALL CAN PLACE
 # =========================================================
 
 def can_place_wall(kind, row, col):
@@ -809,63 +789,244 @@ def can_place_wall(kind, row, col):
 
 
 # =========================================================
-# GET ALL VALID WALLS
+# SIMULATE WALL
 #
-# CPUが候補を調べるための関数
+# 壁を一時的に置いて、
+# その結果を調べる
 # =========================================================
 
-def get_valid_walls():
+def simulate_wall(kind, row, col):
 
-    walls = []
+    if not can_place_wall(
+        kind,
+        row,
+        col
+    ):
+
+        return None
+
+    # =====================================================
+    # 壁を仮設置
+    # =====================================================
+
+    if kind == "H":
+
+        horizontal_walls.add(
+            (
+                row,
+                col
+            )
+        )
+
+    else:
+
+        vertical_walls.add(
+            (
+                row,
+                col
+            )
+        )
+
+    # =====================================================
+    # 設置後の最短距離
+    # =====================================================
+
+    cpu_distance = get_shortest_distance(
+        player2
+    )
+
+    player_distance = get_shortest_distance(
+        player1
+    )
+
+    # =====================================================
+    # 経路
+    # =====================================================
+
+    cpu_path = get_shortest_path(
+        player2
+    )
+
+    player_path = get_shortest_path(
+        player1
+    )
+
+    # =====================================================
+    # 壁を元に戻す
+    # =====================================================
+
+    if kind == "H":
+
+        horizontal_walls.remove(
+            (
+                row,
+                col
+            )
+        )
+
+    else:
+
+        vertical_walls.remove(
+            (
+                row,
+                col
+            )
+        )
+
+    return {
+        "cpu_distance": cpu_distance,
+        "player_distance": player_distance,
+        "cpu_path": cpu_path,
+        "player_path": player_path
+    }
+
+
+# =========================================================
+# WALL SCORE
+#
+# CPUがその壁を置く価値を評価する
+# =========================================================
+
+def evaluate_wall(
+    kind,
+    row,
+    col
+):
+
+    result = simulate_wall(
+        kind,
+        row,
+        col
+    )
+
+    if result is None:
+
+        return None
+
+    cpu_distance = result[
+        "cpu_distance"
+    ]
+
+    player_distance = result[
+        "player_distance"
+    ]
+
+    current_cpu_distance = get_shortest_distance(
+        player2
+    )
+
+    current_player_distance = get_shortest_distance(
+        player1
+    )
+
+    # =====================================================
+    # 相手を遠ざけるほど高評価
+    # =====================================================
+
+    opponent_gain = (
+        player_distance
+        -
+        current_player_distance
+    )
+
+    # =====================================================
+    # 自分が不利になるほど減点
+    # =====================================================
+
+    cpu_loss = (
+        cpu_distance
+        -
+        current_cpu_distance
+    )
+
+    # =====================================================
+    # 基本スコア
+    # =====================================================
+
+    score = (
+        opponent_gain * 10
+        -
+        cpu_loss * 6
+    )
+
+    return score
+
+
+# =========================================================
+# FIND BEST WALL
+#
+# 現在の盤面で最も価値の高い壁を探す
+# =========================================================
+
+def find_best_wall():
+
+    best_wall = None
+
+    best_score = -999999
+
+    # =====================================================
+    # 全候補を調査
+    # =====================================================
 
     for row in range(8):
 
         for col in range(8):
 
-            # -----------------------------------------
-            # HORIZONTAL
-            # -----------------------------------------
+            # ---------------------------------------------
+            # 横壁
+            # ---------------------------------------------
 
-            if can_place_wall(
+            score = evaluate_wall(
                 "H",
                 row,
                 col
-            ):
+            )
 
-                walls.append(
-                    (
+            if score is not None:
+
+                if score > best_score:
+
+                    best_score = score
+
+                    best_wall = (
                         "H",
                         row,
                         col
                     )
-                )
 
-            # -----------------------------------------
-            # VERTICAL
-            # -----------------------------------------
+            # ---------------------------------------------
+            # 縦壁
+            # ---------------------------------------------
 
-            if can_place_wall(
+            score = evaluate_wall(
                 "V",
                 row,
                 col
-            ):
+            )
 
-                walls.append(
-                    (
+            if score is not None:
+
+                if score > best_score:
+
+                    best_score = score
+
+                    best_wall = (
                         "V",
                         row,
                         col
                     )
-                )
 
-    return walls
+    return (
+        best_wall,
+        best_score
+    )
 
 
 # =========================================================
 # APPLY WALL
 # =========================================================
 
-def add_wall(
+def apply_wall(
     kind,
     row,
     col
@@ -889,300 +1050,570 @@ def add_wall(
             )
         )
 
-
 # =========================================================
-# REMOVE WALL
-# =========================================================
-
-def remove_wall(
-    kind,
-    row,
-    col
-):
-
-    if kind == "H":
-
-        horizontal_walls.remove(
-            (
-                row,
-                col
-            )
-        )
-
-    else:
-
-        vertical_walls.remove(
-            (
-                row,
-                col
-            )
-        )
-
-
-# =========================================================
-# TEST WALL EFFECT
+# CPU MOVE SCORE
 #
-# 壁を仮に置いた場合の
-# PLAYER 1 / PLAYER 2 の最短距離を調べる。
+# CPUがそのマスへ移動した場合の評価
 # =========================================================
 
-def evaluate_wall(
-    kind,
+def evaluate_cpu_move(
     row,
     col
 ):
 
-    if not can_place_wall(
-        kind,
-        row,
-        col
-    ):
+    # =====================================================
+    # 現在のCPU位置を保存
+    # =====================================================
 
-        return None
+    old_row = player2["row"]
+    old_col = player2["col"]
 
-    # ---------------------------------------------
-    # 壁を仮設置
-    # ---------------------------------------------
+    # =====================================================
+    # 仮移動
+    # =====================================================
 
-    add_wall(
-        kind,
-        row,
-        col
-    )
+    player2["row"] = row
+    player2["col"] = col
 
-    p1_distance = get_path_distance(
-        player1
-    )
+    # =====================================================
+    # ゴールまでの距離
+    # =====================================================
 
-    p2_distance = get_path_distance(
+    distance = get_shortest_distance(
         player2
     )
 
-    # ---------------------------------------------
-    # 壁を削除
-    # ---------------------------------------------
+    # =====================================================
+    # 元に戻す
+    # =====================================================
 
-    remove_wall(
-        kind,
-        row,
-        col
+    player2["row"] = old_row
+    player2["col"] = old_col
+
+    # =====================================================
+    # 距離が短いほど高評価
+    # =====================================================
+
+    score = (
+        -distance * 10
     )
 
-    return (
-        p1_distance,
-        p2_distance
-    )
+    # =====================================================
+    # ゴール直前は大きく評価
+    # =====================================================
 
+    if row == player2["goal"]:
 
-# =========================================================
-# FIND BEST BLOCKING WALL
-#
-# CPUがPLAYER 1を妨害するための壁を探す。
-#
-# PLAYER 1の経路が長くなるほど高評価。
-# ただしCPU自身の経路が長くなりすぎる壁は避ける。
-# =========================================================
+        score += 10000
 
-def find_best_blocking_wall():
-
-    cpu = player2
-    opponent = player1
-
-    if cpu["walls"] <= 0:
-
-        return None
-
-    current_cpu_distance = get_path_distance(
-        cpu
-    )
-
-    current_opponent_distance = get_path_distance(
-        opponent
-    )
-
-    valid_walls = get_valid_walls()
-
-    if not valid_walls:
-
-        return None
-
-    best_wall = None
-    best_score = -999999
-
-    for kind, row, col in valid_walls:
-
-        result = evaluate_wall(
-            kind,
-            row,
-            col
-        )
-
-        if result is None:
-
-            continue
-
-        p1_distance, p2_distance = result
-
-        # =============================================
-        # 相手の距離が伸びた量
-        # =============================================
-
-        opponent_gain = (
-            p1_distance
-            -
-            current_opponent_distance
-        )
-
-        # =============================================
-        # CPU自身の距離が伸びた量
-        # =============================================
-
-        cpu_loss = (
-            p2_distance
-            -
-            current_cpu_distance
-        )
-
-        # =============================================
-        # 基本スコア
-        # =============================================
-
-        score = (
-            opponent_gain * 10
-            -
-            cpu_loss * 7
-        )
-
-        # =============================================
-        # 相手の距離が短くなってしまう壁は
-        # 基本的に評価を下げる
-        # =============================================
-
-        if p1_distance < current_opponent_distance:
-
-            score -= 20
-
-        # =============================================
-        # CPUの経路がかなり長くなる壁は避ける
-        # =============================================
-
-        if (
-            p2_distance
-            >
-            current_cpu_distance + 3
-        ):
-
-            score -= 15
-
-        # =============================================
-        # 同じスコアならランダム性を少し入れる
-        # =============================================
-
-        score += random.random()
-
-        if score > best_score:
-
-            best_score = score
-
-            best_wall = (
-                kind,
-                row,
-                col
-            )
-
-    return best_wall
+    return score
 
 
 # =========================================================
 # FIND BEST MOVE
 #
-# CPUが移動するとき、
-# ゴールまでの距離が短くなるマスを優先する。
+# CPUの合法手の中から
+# 最もゴールに近づく手を選ぶ
 # =========================================================
 
-def find_best_move(player):
+def find_best_move():
 
     legal_moves = get_legal_moves(
-        player
+        player2
     )
 
     if not legal_moves:
 
         return None
 
-    best_moves = []
+    best_move = None
 
-    best_distance = 999
-
-    original_row = player["row"]
-    original_col = player["col"]
+    best_score = -999999
 
     for row, col in legal_moves:
 
-        player["row"] = row
-        player["col"] = col
-
-        distance = get_path_distance(
-            player
+        score = evaluate_cpu_move(
+            row,
+            col
         )
 
-        if distance < best_distance:
+        if score > best_score:
 
-            best_distance = distance
+            best_score = score
 
-            best_moves = [
-                (
-                    row,
-                    col
-                )
-            ]
-
-        elif distance == best_distance:
-
-            best_moves.append(
-                (
-                    row,
-                    col
-                )
+            best_move = (
+                row,
+                col
             )
 
-    # ---------------------------------------------
-    # 元の位置に戻す
-    # ---------------------------------------------
-
-    player["row"] = original_row
-    player["col"] = original_col
-
-    if not best_moves:
-
-        return None
-
-    return random.choice(
-        best_moves
-    )
+    return best_move
 
 
 # =========================================================
-# RANDOM MOVE
+# CPU MOVE
 # =========================================================
 
-def find_random_move(player):
+def cpu_move():
+
+    global game_over
+
+    if game_over:
+
+        return
+
+    cpu = player2
+
+    # =====================================================
+    # 合法手
+    # =====================================================
 
     legal_moves = get_legal_moves(
-        player
+        cpu
     )
 
     if not legal_moves:
 
-        return None
+        return
 
-    return random.choice(
-        legal_moves
-    )
+    # =====================================================
+    # LEVEL 1
+    #
+    # 基本的な最短距離優先
+    # =====================================================
+
+    if cpu_level == 1:
+
+        best_move = find_best_move()
+
+        if best_move is None:
+
+            return
+
+        cpu["row"] = best_move[0]
+        cpu["col"] = best_move[1]
+
+    # =====================================================
+    # LEVEL 2
+    #
+    # 自分と相手の距離を比較
+    # =====================================================
+
+    elif cpu_level == 2:
+
+        best_move = None
+
+        best_score = -999999
+
+        for row, col in legal_moves:
+
+            old_row = cpu["row"]
+            old_col = cpu["col"]
+
+            # ---------------------------------------------
+            # 仮移動
+            # ---------------------------------------------
+
+            cpu["row"] = row
+            cpu["col"] = col
+
+            cpu_distance = get_shortest_distance(
+                cpu
+            )
+
+            player_distance = get_shortest_distance(
+                player1
+            )
+
+            # ---------------------------------------------
+            # 評価
+            # ---------------------------------------------
+
+            score = (
+                player_distance * 5
+                -
+                cpu_distance * 10
+            )
+
+            # ---------------------------------------------
+            # ゴール
+            # ---------------------------------------------
+
+            if row == cpu["goal"]:
+
+                score += 10000
+
+            # ---------------------------------------------
+            # 元に戻す
+            # ---------------------------------------------
+
+            cpu["row"] = old_row
+            cpu["col"] = old_col
+
+            if score > best_score:
+
+                best_score = score
+
+                best_move = (
+                    row,
+                    col
+                )
+
+        if best_move is None:
+
+            return
+
+        cpu["row"] = best_move[0]
+        cpu["col"] = best_move[1]
+
+    # =====================================================
+    # LEVEL 3
+    #
+    # 移動と壁の両方を比較する
+    # =====================================================
+
+    else:
+
+        best_move = find_best_move()
+
+        move_score = -999999
+
+        if best_move is not None:
+
+            move_score = evaluate_cpu_move(
+                best_move[0],
+                best_move[1]
+            )
+
+        # ---------------------------------------------
+        # 壁を評価
+        # ---------------------------------------------
+
+        best_wall, wall_score = find_best_wall()
+
+        if best_wall is None:
+
+            wall_score = -999999
+
+        # ---------------------------------------------
+        # 壁の価値が十分高ければ壁
+        # ---------------------------------------------
+
+        if (
+            cpu["walls"] > 0
+            and
+            best_wall is not None
+            and
+            wall_score > move_score + 5
+        ):
+
+            kind, row, col = best_wall
+
+            apply_wall(
+                kind,
+                row,
+                col
+            )
+
+            cpu["walls"] -= 1
+
+        # ---------------------------------------------
+        # それ以外は移動
+        # ---------------------------------------------
+
+        elif best_move is not None:
+
+            cpu["row"] = best_move[0]
+            cpu["col"] = best_move[1]
+
+        else:
+
+            return
+
+    # =====================================================
+    # 勝利判定
+    # =====================================================
+
+    if check_win(cpu):
+
+        game_over = True
+
+        return
+
+    # =====================================================
+    # PLAYER 1へ
+    # =====================================================
+
+    change_turn()
 
 
 # =========================================================
-# WALL POSITION FROM MOUSE
+# CPU WALL
+#
+# LEVEL 3で使用する補助関数
+# =========================================================
+
+def cpu_place_wall():
+
+    global game_over
+
+    if game_over:
+
+        return
+
+    cpu = player2
+
+    if cpu["walls"] <= 0:
+
+        return
+
+    best_wall, best_score = find_best_wall()
+
+    if best_wall is None:
+
+        change_turn()
+
+        return
+
+    kind, row, col = best_wall
+
+    apply_wall(
+        kind,
+        row,
+        col
+    )
+
+    cpu["walls"] -= 1
+
+    change_turn()
+
+
+# =========================================================
+# CPU TURN
+# =========================================================
+
+def cpu_turn():
+
+    if not cpu_mode:
+
+        return
+
+    if game_over:
+
+        return
+
+    # =====================================================
+    # CPU = PLAYER 2
+    # =====================================================
+
+    if turn != 2:
+
+        return
+
+    # =====================================================
+    # CPU THINKING
+    #
+    # 0.5秒待ってからCPUが行動する
+    # =====================================================
+
+    global cpu_thinking
+    global cpu_thinking_start
+
+    if not cpu_thinking:
+
+        cpu_thinking = True
+
+        cpu_thinking_start = pygame.time.get_ticks()
+
+        return
+
+    current_time = pygame.time.get_ticks()
+
+    elapsed = (
+        current_time
+        -
+        cpu_thinking_start
+    )
+
+    if elapsed < CPU_THINK_TIME:
+
+        return
+
+    # =====================================================
+    # 思考終了
+    # =====================================================
+
+    cpu_thinking = False
+
+    # =====================================================
+    # CPU行動
+    # =====================================================
+
+    cpu_move()
+
+
+# =========================================================
+# LEGAL MOVES
+# =========================================================
+
+def get_legal_moves(player):
+
+    row = player["row"]
+    col = player["col"]
+
+    opponent = get_opponent(player)
+
+    moves = []
+
+    directions = [
+        (-1, 0),
+        (1, 0),
+        (0, -1),
+        (0, 1)
+    ]
+
+    for dr, dc in directions:
+
+        next_row = row + dr
+        next_col = col + dc
+
+        if not (
+            0 <= next_row < BOARD_SIZE
+            and
+            0 <= next_col < BOARD_SIZE
+        ):
+
+            continue
+
+        if blocked(
+            row,
+            col,
+            next_row,
+            next_col
+        ):
+
+            continue
+
+        # =================================================
+        # NORMAL MOVE
+        # =================================================
+
+        if not (
+            next_row == opponent["row"]
+            and
+            next_col == opponent["col"]
+        ):
+
+            moves.append(
+                (
+                    next_row,
+                    next_col
+                )
+            )
+
+            continue
+
+        # =================================================
+        # OPPONENT IS NEXT
+        # =================================================
+
+        jump_row = next_row + dr
+        jump_col = next_col + dc
+
+        # =================================================
+        # STRAIGHT JUMP
+        # =================================================
+
+        if (
+            0 <= jump_row < BOARD_SIZE
+            and
+            0 <= jump_col < BOARD_SIZE
+        ):
+
+            if not blocked(
+                next_row,
+                next_col,
+                jump_row,
+                jump_col
+            ):
+
+                moves.append(
+                    (
+                        jump_row,
+                        jump_col
+                    )
+                )
+
+                continue
+
+        # =================================================
+        # SIDEWAYS
+        # =================================================
+
+        if dr != 0:
+
+            side_positions = [
+                (
+                    next_row,
+                    next_col - 1
+                ),
+                (
+                    next_row,
+                    next_col + 1
+                )
+            ]
+
+        else:
+
+            side_positions = [
+                (
+                    next_row - 1,
+                    next_col
+                ),
+                (
+                    next_row + 1,
+                    next_col
+                )
+            ]
+
+        for side_row, side_col in side_positions:
+
+            if not (
+                0 <= side_row < BOARD_SIZE
+                and
+                0 <= side_col < BOARD_SIZE
+            ):
+
+                continue
+
+            if blocked(
+                next_row,
+                next_col,
+                side_row,
+                side_col
+            ):
+
+                continue
+
+            if (
+                side_row == opponent["row"]
+                and
+                side_col == opponent["col"]
+            ):
+
+                continue
+
+            moves.append(
+                (
+                    side_row,
+                    side_col
+                )
+            )
+
+    return moves
+
+
+# =========================================================
+# FIND WALL FROM MOUSE
 # =========================================================
 
 def wall_from_mouse(
@@ -1190,11 +1621,20 @@ def wall_from_mouse(
     mouse_y
 ):
 
-    relative_x = mouse_x - BOARD_X
-    relative_y = mouse_y - BOARD_Y
+    relative_x = (
+        mouse_x
+        -
+        BOARD_X
+    )
+
+    relative_y = (
+        mouse_y
+        -
+        BOARD_Y
+    )
 
     # =====================================================
-    # 盤面外
+    # BOARD OUTSIDE
     # =====================================================
 
     if (
@@ -1202,15 +1642,17 @@ def wall_from_mouse(
         or
         relative_y < -20
         or
-        relative_x > BOARD_SIZE * CELL_SIZE + 20
+        relative_x >
+        BOARD_SIZE * CELL_SIZE + 20
         or
-        relative_y > BOARD_SIZE * CELL_SIZE + 20
+        relative_y >
+        BOARD_SIZE * CELL_SIZE + 20
     ):
 
         return None
 
     # =====================================================
-    # 縦のグリッド線
+    # VERTICAL GRID LINE
     # =====================================================
 
     vertical_line = round(
@@ -1224,7 +1666,7 @@ def wall_from_mouse(
     )
 
     # =====================================================
-    # 横のグリッド線
+    # HORIZONTAL GRID LINE
     # =====================================================
 
     horizontal_line = round(
@@ -1238,7 +1680,7 @@ def wall_from_mouse(
     )
 
     # =====================================================
-    # 壁の近くではない
+    # NOT NEAR WALL
     # =====================================================
 
     if (
@@ -1255,7 +1697,11 @@ def wall_from_mouse(
 
     if horizontal_distance <= vertical_distance:
 
-        wall_row = horizontal_line - 1
+        wall_row = (
+            horizontal_line
+            -
+            1
+        )
 
         wall_col = int(
             relative_x // CELL_SIZE
@@ -1283,7 +1729,11 @@ def wall_from_mouse(
         relative_y // CELL_SIZE
     )
 
-    wall_col = vertical_line - 1
+    wall_col = (
+        vertical_line
+        -
+        1
+    )
 
     if not (
         0 <= wall_row < 8
@@ -1298,6 +1748,7 @@ def wall_from_mouse(
         wall_row,
         wall_col
     )
+
 
 # =========================================================
 # DRAW BOARD
@@ -1314,9 +1765,9 @@ def draw_board():
                 col
             )
 
-            # ---------------------------------------------
-            # ゴールエリア
-            # ---------------------------------------------
+            # =================================================
+            # GOAL AREA
+            # =================================================
 
             if row == 0:
 
@@ -1330,9 +1781,9 @@ def draw_board():
 
                 color = WHITE
 
-            # ---------------------------------------------
-            # マス
-            # ---------------------------------------------
+            # =================================================
+            # CELL
+            # =================================================
 
             pygame.draw.rect(
                 screen,
@@ -1345,9 +1796,9 @@ def draw_board():
                 )
             )
 
-            # ---------------------------------------------
-            # グリッド
-            # ---------------------------------------------
+            # =================================================
+            # GRID
+            # =================================================
 
             pygame.draw.rect(
                 screen,
@@ -1375,7 +1826,9 @@ def draw_coordinates():
     for row in range(BOARD_SIZE):
 
         letter = chr(
-            ord("A") + row
+            ord("A")
+            +
+            row
         )
 
         text = font.render(
@@ -1384,13 +1837,20 @@ def draw_coordinates():
             BLACK
         )
 
-        x = BOARD_X - 35
+        x = (
+            BOARD_X
+            -
+            35
+        )
 
         y = (
             BOARD_Y
-            + row * CELL_SIZE
-            + CELL_SIZE // 2
-            - text.get_height() // 2
+            +
+            row * CELL_SIZE
+            +
+            CELL_SIZE // 2
+            -
+            text.get_height() // 2
         )
 
         screen.blit(
@@ -1419,12 +1879,19 @@ def draw_coordinates():
 
         x = (
             BOARD_X
-            + col * CELL_SIZE
-            + CELL_SIZE // 2
-            - text.get_width() // 2
+            +
+            col * CELL_SIZE
+            +
+            CELL_SIZE // 2
+            -
+            text.get_width() // 2
         )
 
-        y = BOARD_Y - 35
+        y = (
+            BOARD_Y
+            -
+            35
+        )
 
         screen.blit(
             text,
@@ -1449,17 +1916,20 @@ def draw_walls():
 
         x1 = (
             BOARD_X
-            + col * CELL_SIZE
+            +
+            col * CELL_SIZE
         )
 
         x2 = (
             BOARD_X
-            + (col + 2) * CELL_SIZE
+            +
+            (col + 2) * CELL_SIZE
         )
 
         y = (
             BOARD_Y
-            + (row + 1) * CELL_SIZE
+            +
+            (row + 1) * CELL_SIZE
         )
 
         pygame.draw.line(
@@ -1484,149 +1954,25 @@ def draw_walls():
 
         x = (
             BOARD_X
-            + (col + 1) * CELL_SIZE
+            +
+            (col + 1) * CELL_SIZE
         )
 
         y1 = (
             BOARD_Y
-            + row * CELL_SIZE
+            +
+            row * CELL_SIZE
         )
 
         y2 = (
             BOARD_Y
-            + (row + 2) * CELL_SIZE
+            +
+            (row + 2) * CELL_SIZE
         )
 
         pygame.draw.line(
             screen,
             WALL_COLOR,
-            (
-                x,
-                y1
-            ),
-            (
-                x,
-                y2
-            ),
-            WALL_WIDTH
-        )
-
-
-# =========================================================
-# DRAW WALL PREVIEW
-# =========================================================
-
-def draw_wall_preview():
-
-    if game_over:
-
-        return
-
-    if mode != "wall":
-
-        return
-
-    # CPUターン中は表示しない
-    if cpu_mode and turn == 2:
-
-        return
-
-    player = get_current_player()
-
-    if player["walls"] <= 0:
-
-        return
-
-    mouse_x, mouse_y = pygame.mouse.get_pos()
-
-    wall = wall_from_mouse(
-        mouse_x,
-        mouse_y
-    )
-
-    if wall is None:
-
-        return
-
-    kind, row, col = wall
-
-    # =====================================================
-    # 壁を設置できるか確認
-    # =====================================================
-
-    valid = can_place_wall(
-        kind,
-        row,
-        col
-    )
-
-    if valid:
-
-        color = PREVIEW_VALID
-
-    else:
-
-        color = PREVIEW_INVALID
-
-    # =====================================================
-    # HORIZONTAL PREVIEW
-    # =====================================================
-
-    if kind == "H":
-
-        x1 = (
-            BOARD_X
-            + col * CELL_SIZE
-        )
-
-        x2 = (
-            BOARD_X
-            + (col + 2) * CELL_SIZE
-        )
-
-        y = (
-            BOARD_Y
-            + (row + 1) * CELL_SIZE
-        )
-
-        pygame.draw.line(
-            screen,
-            color,
-            (
-                x1,
-                y
-            ),
-            (
-                x2,
-                y
-            ),
-            WALL_WIDTH
-        )
-
-    # =====================================================
-    # VERTICAL PREVIEW
-    # =====================================================
-
-    else:
-
-        x = (
-            BOARD_X
-            + (col + 1) * CELL_SIZE
-        )
-
-        y1 = (
-            BOARD_Y
-            + row * CELL_SIZE
-        )
-
-        y2 = (
-            BOARD_Y
-            + (row + 2) * CELL_SIZE
-        )
-
-        pygame.draw.line(
-            screen,
-            color,
             (
                 x,
                 y1
@@ -1653,7 +1999,7 @@ def draw_legal_moves():
 
         return
 
-    # CPUターン中は表示しない
+    # CPUのターン中は表示しない
     if cpu_mode and turn == 2:
 
         return
@@ -1680,12 +2026,14 @@ def draw_legal_moves():
 
         center_x = (
             x
-            + CELL_SIZE // 2
+            +
+            CELL_SIZE // 2
         )
 
         center_y = (
             y
-            + CELL_SIZE // 2
+            +
+            CELL_SIZE // 2
         )
 
         if hovered_cell == (
@@ -1730,16 +2078,18 @@ def draw_player(
 
     center_x = (
         x
-        + CELL_SIZE // 2
+        +
+        CELL_SIZE // 2
     )
 
     center_y = (
         y
-        + CELL_SIZE // 2
+        +
+        CELL_SIZE // 2
     )
 
     # =====================================================
-    # Shadow
+    # SHADOW
     # =====================================================
 
     pygame.draw.circle(
@@ -1753,7 +2103,7 @@ def draw_player(
     )
 
     # =====================================================
-    # Player
+    # PLAYER
     # =====================================================
 
     pygame.draw.circle(
@@ -1767,7 +2117,7 @@ def draw_player(
     )
 
     # =====================================================
-    # Border
+    # BORDER
     # =====================================================
 
     pygame.draw.circle(
@@ -1782,7 +2132,7 @@ def draw_player(
     )
 
     # =====================================================
-    # Number
+    # NUMBER
     # =====================================================
 
     text = large_font.render(
@@ -1793,12 +2143,14 @@ def draw_player(
 
     text_x = (
         center_x
-        - text.get_width() // 2
+        -
+        text.get_width() // 2
     )
 
     text_y = (
         center_y
-        - text.get_height() // 2
+        -
+        text.get_height() // 2
     )
 
     screen.blit(
@@ -1819,13 +2171,149 @@ def position_text(player):
     return (
         chr(
             ord("A")
-            + player["row"]
+            +
+            player["row"]
         )
         +
         str(
             player["col"] + 1
         )
     )
+
+# =========================================================
+# DRAW WALL PREVIEW
+# =========================================================
+
+def draw_wall_preview():
+
+    if game_over:
+
+        return
+
+    if mode != "wall":
+
+        return
+
+    # =====================================================
+    # CPUターン中は表示しない
+    # =====================================================
+
+    if cpu_mode and turn == 2:
+
+        return
+
+    player = get_current_player()
+
+    if player["walls"] <= 0:
+
+        return
+
+    mouse_x, mouse_y = pygame.mouse.get_pos()
+
+    wall = wall_from_mouse(
+        mouse_x,
+        mouse_y
+    )
+
+    if wall is None:
+
+        return
+
+    kind, row, col = wall
+
+    # =====================================================
+    # 設置可能か確認
+    # =====================================================
+
+    valid = can_place_wall(
+        kind,
+        row,
+        col
+    )
+
+    if valid:
+
+        color = PREVIEW_VALID
+
+    else:
+
+        color = PREVIEW_INVALID
+
+    # =====================================================
+    # HORIZONTAL PREVIEW
+    # =====================================================
+
+    if kind == "H":
+
+        x1 = (
+            BOARD_X
+            +
+            col * CELL_SIZE
+        )
+
+        x2 = (
+            BOARD_X
+            +
+            (col + 2) * CELL_SIZE
+        )
+
+        y = (
+            BOARD_Y
+            +
+            (row + 1) * CELL_SIZE
+        )
+
+        pygame.draw.line(
+            screen,
+            color,
+            (
+                x1,
+                y
+            ),
+            (
+                x2,
+                y
+            ),
+            WALL_WIDTH
+        )
+
+    # =====================================================
+    # VERTICAL PREVIEW
+    # =====================================================
+
+    else:
+
+        x = (
+            BOARD_X
+            +
+            (col + 1) * CELL_SIZE
+        )
+
+        y1 = (
+            BOARD_Y
+            +
+            row * CELL_SIZE
+        )
+
+        y2 = (
+            BOARD_Y
+            +
+            (row + 2) * CELL_SIZE
+        )
+
+        pygame.draw.line(
+            screen,
+            color,
+            (
+                x,
+                y1
+            ),
+            (
+                x,
+                y2
+            ),
+            WALL_WIDTH
+        )
 
 
 # =========================================================
@@ -1870,39 +2358,25 @@ def draw_information():
 
             turn_color = RED
 
+    elif cpu_mode and turn == 2:
+
+        turn_text = "CPU THINKING..."
+
+        turn_color = RED
+
     else:
 
-        # -------------------------------------------------
-        # CPU MODE
-        # -------------------------------------------------
+        turn_text = (
+            f"PLAYER {turn} TURN"
+        )
 
-        if (
-            cpu_mode
-            and
-            turn == 2
-        ):
+        if turn == 1:
 
-            turn_text = "CPU THINKING..."
-
-            turn_color = RED
-
-        # -------------------------------------------------
-        # PLAYER TURN
-        # -------------------------------------------------
+            turn_color = BLUE
 
         else:
 
-            turn_text = (
-                f"PLAYER {turn} TURN"
-            )
-
-            if turn == 1:
-
-                turn_color = BLUE
-
-            else:
-
-                turn_color = RED
+            turn_color = RED
 
     turn_surface = large_font.render(
         turn_text,
@@ -1919,7 +2393,7 @@ def draw_information():
     )
 
     # =====================================================
-    # PLAYER 1 INFORMATION
+    # PLAYER 1
     # =====================================================
 
     p1_text = (
@@ -1942,19 +2416,11 @@ def draw_information():
     )
 
     # =====================================================
-    # PLAYER 2 INFORMATION
+    # PLAYER 2
     # =====================================================
 
-    if cpu_mode:
-
-        p2_name = "CPU"
-
-    else:
-
-        p2_name = "P2"
-
     p2_text = (
-        f"{p2_name}: {position_text(player2)}"
+        f"P2: {position_text(player2)}"
         f"   Walls: {player2['walls']}"
     )
 
@@ -1973,16 +2439,34 @@ def draw_information():
     )
 
     # =====================================================
+    # CPU LEVEL
+    # =====================================================
+
+    if cpu_mode:
+
+        level_text = (
+            f"CPU LEVEL: {cpu_level}"
+        )
+
+        level_surface = small_font.render(
+            level_text,
+            True,
+            BLACK
+        )
+
+        screen.blit(
+            level_surface,
+            (
+                650,
+                755
+            )
+        )
+
+    # =====================================================
     # MODE
     # =====================================================
 
-    if cpu_mode and turn == 2:
-
-        mode_text = (
-            "CPU TURN"
-        )
-
-    elif mode == "move":
+    if mode == "move":
 
         mode_text = (
             "MOVE MODE  |  W: Wall Mode"
@@ -2070,12 +2554,14 @@ def draw_reset_button():
 
     text_x = (
         button_rect.centerx
-        - text.get_width() // 2
+        -
+        text.get_width() // 2
     )
 
     text_y = (
         button_rect.centery
-        - text.get_height() // 2
+        -
+        text.get_height() // 2
     )
 
     screen.blit(
@@ -2087,6 +2573,20 @@ def draw_reset_button():
     )
 
     return button_rect
+
+
+# =========================================================
+# CHECK WIN
+# =========================================================
+
+def check_win(player):
+
+    return (
+        player["row"]
+        ==
+        player["goal"]
+    )
+
 
 # =========================================================
 # MOVE PLAYER
@@ -2107,7 +2607,10 @@ def move_player(
 
         return
 
-    # CPUのターンでは人間は操作できない
+    # =====================================================
+    # CPUターン中は操作不可
+    # =====================================================
+
     if cpu_mode and turn == 2:
 
         return
@@ -2154,19 +2657,6 @@ def move_player(
 
 
 # =========================================================
-# CHECK WIN
-# =========================================================
-
-def check_win(player):
-
-    return (
-        player["row"]
-        ==
-        player["goal"]
-    )
-
-
-# =========================================================
 # PLACE WALL
 # =========================================================
 
@@ -2180,7 +2670,10 @@ def place_wall():
 
         return
 
-    # CPUのターンでは人間は壁を置けない
+    # =====================================================
+    # CPUターン中は操作不可
+    # =====================================================
+
     if cpu_mode and turn == 2:
 
         return
@@ -2224,23 +2717,11 @@ def place_wall():
     # 実際に壁を設置
     # =====================================================
 
-    if kind == "H":
-
-        horizontal_walls.add(
-            (
-                row,
-                col
-            )
-        )
-
-    else:
-
-        vertical_walls.add(
-            (
-                row,
-                col
-            )
-        )
+    apply_wall(
+        kind,
+        row,
+        col
+    )
 
     # =====================================================
     # 壁を1枚消費
@@ -2263,6 +2744,7 @@ def change_turn():
 
     global turn
     global mode
+    global cpu_thinking
 
     # =====================================================
     # PLAYER 1 → PLAYER 2
@@ -2286,6 +2768,41 @@ def change_turn():
 
     mode = "move"
 
+    # =====================================================
+    # CPU思考状態をリセット
+    # =====================================================
+
+    cpu_thinking = False
+
+
+# =========================================================
+# APPLY WALL
+# =========================================================
+
+def apply_wall(
+    kind,
+    row,
+    col
+):
+
+    if kind == "H":
+
+        horizontal_walls.add(
+            (
+                row,
+                col
+            )
+        )
+
+    else:
+
+        vertical_walls.add(
+            (
+                row,
+                col
+            )
+        )
+
 
 # =========================================================
 # RESET GAME
@@ -2296,16 +2813,15 @@ def reset_game():
     global turn
     global game_over
     global mode
-    global cpu_wait_start
+    global cpu_thinking
+    global cpu_thinking_start
 
     # =====================================================
     # PLAYER 1
     # =====================================================
 
     player1["row"] = 0
-
     player1["col"] = 4
-
     player1["walls"] = 10
 
     # =====================================================
@@ -2313,9 +2829,7 @@ def reset_game():
     # =====================================================
 
     player2["row"] = 8
-
     player2["col"] = 4
-
     player2["walls"] = 10
 
     # =====================================================
@@ -2337,12 +2851,12 @@ def reset_game():
     mode = "move"
 
     # =====================================================
-    # CPU WAIT
-    #
-    # ゲーム開始時にCPU待機時間をリセット
+    # CPU STATE
     # =====================================================
 
-    cpu_wait_start = None
+    cpu_thinking = False
+
+    cpu_thinking_start = 0
 
 
 # =========================================================
@@ -2380,7 +2894,33 @@ def draw_title_screen():
     )
 
     # =====================================================
-    # PLAYER VS PLAYER BUTTON
+    # SUBTITLE
+    # =====================================================
+
+    subtitle = font.render(
+        "Choose Game Mode",
+        True,
+        BLACK
+    )
+
+    subtitle_x = (
+        WINDOW_WIDTH // 2
+        -
+        subtitle.get_width() // 2
+    )
+
+    screen.blit(
+        subtitle,
+        (
+            subtitle_x,
+            220
+        )
+    )
+
+    mouse_x, mouse_y = pygame.mouse.get_pos()
+
+    # =====================================================
+    # PLAYER VS PLAYER
     # =====================================================
 
     pvp_button = pygame.Rect(
@@ -2389,8 +2929,6 @@ def draw_title_screen():
         350,
         70
     )
-
-    mouse_x, mouse_y = pygame.mouse.get_pos()
 
     if pvp_button.collidepoint(
         mouse_x,
@@ -2437,7 +2975,7 @@ def draw_title_screen():
     )
 
     # =====================================================
-    # PLAYER VS CPU BUTTON
+    # PLAYER VS CPU
     # =====================================================
 
     cpu_button = pygame.Rect(
@@ -2509,6 +3047,11 @@ def draw_title_screen():
             control_text.get_width() // 2,
             560
         )
+    )
+
+    return (
+        pvp_button,
+        cpu_button
     )
 
 
@@ -2768,37 +3311,105 @@ def draw_cpu_level_screen():
         )
     )
 
-
-# =========================================================
-# CPU AI
-# =========================================================
-
-def get_distance_to_goal(player, row, col):
-
-    return abs(
-        row - player["goal"]
+    return (
+        level1_button,
+        level2_button,
+        level3_button,
+        back_button
     )
 
 
 # =========================================================
-# FIND SHORTEST PATH
+# CPU DISTANCE
 # =========================================================
 
-def shortest_path_distance(
+def get_goal_distance(
     player,
-    start_row=None,
-    start_col=None
+    row,
+    col
 ):
 
-    if start_row is None:
-        start_row = player["row"]
+    return abs(
+        row
+        -
+        player["goal"]
+    )
 
-    if start_col is None:
-        start_col = player["col"]
+
+# =========================================================
+# CPU MOVE SCORE
+# =========================================================
+
+def evaluate_cpu_move(
+    row,
+    col
+):
+
+    cpu = player2
+    opponent = player1
+
+    # =====================================================
+    # ゴールまでの距離
+    # =====================================================
+
+    cpu_distance = get_goal_distance(
+        cpu,
+        row,
+        col
+    )
+
+    # =====================================================
+    # プレイヤーのゴールまでの距離
+    # =====================================================
+
+    opponent_distance = get_goal_distance(
+        opponent,
+        opponent["row"],
+        opponent["col"]
+    )
+
+    # =====================================================
+    # CPUが近づくほど高評価
+    # =====================================================
+
+    score = (
+        -cpu_distance * 100
+    )
+
+    # =====================================================
+    # 相手より先にゴールできそうなら加点
+    # =====================================================
+
+    if cpu_distance < opponent_distance:
+
+        score += 30
+
+    # =====================================================
+    # ゴール直前を大きく評価
+    # =====================================================
+
+    if cpu_distance == 0:
+
+        score += 10000
+
+    elif cpu_distance == 1:
+
+        score += 500
+
+    return score
+
+
+# =========================================================
+# CPU PATH DISTANCE
+# =========================================================
+
+def get_shortest_path_distance(
+    player
+):
 
     start = (
-        start_row,
-        start_col
+        player["row"],
+        player["col"]
     )
 
     goal_row = player["goal"]
@@ -2814,13 +3425,16 @@ def shortest_path_distance(
 
     visited = set()
 
-    visited.add(start)
+    visited.add(
+        start
+    )
 
     while queue:
 
         (row, col), distance = queue.popleft()
 
         if row == goal_row:
+
             return distance
 
         for nr, nc in get_neighbors(
@@ -2828,31 +3442,36 @@ def shortest_path_distance(
             col
         ):
 
-            position = (
+            if (
                 nr,
                 nc
-            )
+            ) not in visited:
 
-            if position in visited:
-                continue
-
-            visited.add(position)
-
-            queue.append(
-                (
-                    position,
-                    distance + 1
+                visited.add(
+                    (
+                        nr,
+                        nc
+                    )
                 )
-            )
+
+                queue.append(
+                    (
+                        (
+                            nr,
+                            nc
+                        ),
+                        distance + 1
+                    )
+                )
 
     return 999
 
 
 # =========================================================
-# CPU MOVE SCORE
+# CPU MOVE EVALUATION
 # =========================================================
 
-def evaluate_cpu_move(
+def evaluate_cpu_move_advanced(
     row,
     col
 ):
@@ -2860,80 +3479,99 @@ def evaluate_cpu_move(
     cpu = player2
     opponent = player1
 
-    # -----------------------------------------------------
-    # CPU自身のゴールまでの距離
-    # -----------------------------------------------------
+    score = 0
 
-    cpu_distance = shortest_path_distance(
-        cpu,
-        row,
-        col
+    # =====================================================
+    # CPUの現在位置からの距離
+    # =====================================================
+
+    current_distance = get_shortest_path_distance(
+        cpu
     )
 
-    # -----------------------------------------------------
-    # プレイヤー1のゴールまでの距離
-    # -----------------------------------------------------
+    # =====================================================
+    # 仮にCPUを移動
+    # =====================================================
 
-    opponent_distance = shortest_path_distance(
+    old_row = cpu["row"]
+    old_col = cpu["col"]
+
+    cpu["row"] = row
+    cpu["col"] = col
+
+    new_distance = get_shortest_path_distance(
+        cpu
+    )
+
+    # =====================================================
+    # 元に戻す
+    # =====================================================
+
+    cpu["row"] = old_row
+    cpu["col"] = old_col
+
+    # =====================================================
+    # 距離が短くなったら高評価
+    # =====================================================
+
+    score += (
+        current_distance
+        -
+        new_distance
+    ) * 100
+
+    # =====================================================
+    # 相手のゴールまでの距離
+    # =====================================================
+
+    opponent_distance = get_shortest_path_distance(
         opponent
     )
 
-    # -----------------------------------------------------
-    # 基本スコア
-    #
-    # CPUの距離が短いほど高評価
-    # -----------------------------------------------------
+    # =====================================================
+    # 相手より先にゴールできるなら加点
+    # =====================================================
 
-    score = 0
+    if new_distance < opponent_distance:
 
-    score -= cpu_distance * 100
+        score += 80
 
-    # -----------------------------------------------------
-    # 相手との距離
-    #
-    # 相手がゴールに近い場合は、
-    # CPUも急いで進む
-    # -----------------------------------------------------
+    elif new_distance == opponent_distance:
 
-    score += opponent_distance * 15
+        score += 20
 
-    # -----------------------------------------------------
-    # ゴールに近いマスをさらに評価
-    # -----------------------------------------------------
+    else:
 
-    score -= abs(
-        row - cpu["goal"]
-    ) * 5
+        score -= 30
 
-    # -----------------------------------------------------
-    # 相手の近くにいる場合
-    #
-    # 相手との干渉を考慮
-    # -----------------------------------------------------
+    # =====================================================
+    # ゴール到達
+    # =====================================================
 
-    distance_from_opponent = (
-        abs(
-            row - opponent["row"]
-        )
-        +
-        abs(
-            col - opponent["col"]
-        )
+    if row == cpu["goal"]:
+
+        score += 10000
+
+    # =====================================================
+    # 中央寄りのマスを少し評価
+    # =====================================================
+
+    center_distance = abs(
+        col - 4
     )
 
-    score += min(
-        distance_from_opponent,
-        6
-    ) * 2
+    score += (
+        4 - center_distance
+    ) * 3
 
     return score
 
 
 # =========================================================
-# CPU CHOOSE MOVE
+# CPU SELECT BEST MOVE
 # =========================================================
 
-def cpu_choose_move():
+def cpu_select_best_move():
 
     cpu = player2
 
@@ -2942,152 +3580,216 @@ def cpu_choose_move():
     )
 
     if not legal_moves:
+
         return None
 
     # =====================================================
     # LEVEL 1
-    # ランダム性を強くする
     # =====================================================
 
     if cpu_level == 1:
 
-        # ゴール方向の候補を優先しつつ
-        # ランダムに選択
-
-        best_distance = 999
-
-        candidates = []
-
-        for row, col in legal_moves:
-
-            distance = shortest_path_distance(
-                cpu,
-                row,
-                col
-            )
-
-            if distance < best_distance:
-
-                best_distance = distance
-
-                candidates = [
-                    (
-                        row,
-                        col
-                    )
-                ]
-
-            elif distance == best_distance:
-
-                candidates.append(
-                    (
-                        row,
-                        col
-                    )
-                )
-
-        if candidates:
-
-            return random.choice(
-                candidates
-            )
-
-    # =====================================================
-    # LEVEL 2
-    # 評価値を使う
-    # =====================================================
-
-    elif cpu_level == 2:
-
-        scored_moves = []
-
-        for row, col in legal_moves:
-
-            score = evaluate_cpu_move(
-                row,
-                col
-            )
-
-            scored_moves.append(
-                (
-                    score,
-                    row,
-                    col
-                )
-            )
-
-        scored_moves.sort(
-            reverse=True
+        best_move = random.choice(
+            legal_moves
         )
-
-        # 上位候補からランダムに選択
-        top_count = min(
-            2,
-            len(scored_moves)
-        )
-
-        selected = random.choice(
-            scored_moves[
-                :top_count
-            ]
-        )
-
-        return (
-            selected[1],
-            selected[2]
-        )
-
-    # =====================================================
-    # LEVEL 3
-    # 最も評価の高い手を選択
-    # =====================================================
-
-    else:
 
         best_score = -999999
 
-        best_moves = []
+        for move in legal_moves:
 
-        for row, col in legal_moves:
+            row, col = move
 
             score = evaluate_cpu_move(
                 row,
                 col
+            )
+
+            # 少しランダム性を残す
+            score += random.randint(
+                -20,
+                20
             )
 
             if score > best_score:
 
                 best_score = score
 
-                best_moves = [
-                    (
-                        row,
-                        col
-                    )
-                ]
+                best_move = move
 
-            elif score == best_score:
+        return best_move
 
-                best_moves.append(
-                    (
-                        row,
-                        col
-                    )
-                )
+    # =====================================================
+    # LEVEL 2
+    # =====================================================
 
-        if best_moves:
+    if cpu_level == 2:
 
-            return random.choice(
-                best_moves
+        best_move = None
+
+        best_score = -999999
+
+        for move in legal_moves:
+
+            row, col = move
+
+            score = evaluate_cpu_move_advanced(
+                row,
+                col
             )
 
-    return random.choice(
-        legal_moves
-    )
+            score += random.randint(
+                -8,
+                8
+            )
+
+            if score > best_score:
+
+                best_score = score
+
+                best_move = move
+
+        return best_move
+
+    # =====================================================
+    # LEVEL 3
+    # =====================================================
+
+    best_move = None
+
+    best_score = -999999
+
+    for move in legal_moves:
+
+        row, col = move
+
+        score = evaluate_cpu_move_advanced(
+            row,
+            col
+        )
+
+        # =================================================
+        # 相手の次の手も考える
+        # =================================================
+
+        old_row = cpu["row"]
+        old_col = cpu["col"]
+
+        cpu["row"] = row
+        cpu["col"] = col
+
+        opponent_moves = get_legal_moves(
+            player1
+        )
+
+        worst_reply = 0
+
+        if opponent_moves:
+
+            opponent_best = -999999
+
+            for opponent_move in opponent_moves:
+
+                opponent_row, opponent_col = opponent_move
+
+                opponent_old_row = player1["row"]
+                opponent_old_col = player1["col"]
+
+                player1["row"] = opponent_row
+                player1["col"] = opponent_col
+
+                opponent_distance = get_shortest_path_distance(
+                    player1
+                )
+
+                player1["row"] = opponent_old_row
+                player1["col"] = opponent_old_col
+
+                reply_score = (
+                    -opponent_distance * 100
+                )
+
+                if opponent_distance == 0:
+
+                    reply_score += 10000
+
+                if reply_score > opponent_best:
+
+                    opponent_best = reply_score
+
+            worst_reply = opponent_best
+
+        cpu["row"] = old_row
+        cpu["col"] = old_col
+
+        score -= worst_reply * 0.5
+
+        score += random.randint(
+            -3,
+            3
+        )
+
+        if score > best_score:
+
+            best_score = score
+
+            best_move = move
+
+    return best_move
 
 
 # =========================================================
-# CPU WALL SCORE
+# CPU MOVE
+# =========================================================
+
+def cpu_move():
+
+    global game_over
+
+    if game_over:
+
+        return
+
+    cpu = player2
+
+    # =====================================================
+    # CPUの移動候補
+    # =====================================================
+
+    best_move = cpu_select_best_move()
+
+    if best_move is None:
+
+        change_turn()
+
+        return
+
+    # =====================================================
+    # 移動
+    # =====================================================
+
+    cpu["row"] = best_move[0]
+
+    cpu["col"] = best_move[1]
+
+    # =====================================================
+    # 勝利判定
+    # =====================================================
+
+    if check_win(cpu):
+
+        game_over = True
+
+        return
+
+    # =====================================================
+    # プレイヤー1へ
+    # =====================================================
+
+    change_turn()
+
+
+# =========================================================
+# CPU WALL EVALUATION
 # =========================================================
 
 def evaluate_cpu_wall(
@@ -3096,6 +3798,14 @@ def evaluate_cpu_wall(
     col
 ):
 
+    if not can_place_wall(
+        kind,
+        row,
+        col
+    ):
+
+        return -999999
+
     cpu = player2
     opponent = player1
 
@@ -3103,33 +3813,17 @@ def evaluate_cpu_wall(
     # 壁を仮設置
     # =====================================================
 
-    if kind == "H":
+    apply_wall(
+        kind,
+        row,
+        col
+    )
 
-        horizontal_walls.add(
-            (
-                row,
-                col
-            )
-        )
-
-    else:
-
-        vertical_walls.add(
-            (
-                row,
-                col
-            )
-        )
-
-    # =====================================================
-    # 壁を置いた後の距離
-    # =====================================================
-
-    cpu_distance = shortest_path_distance(
+    cpu_distance = get_shortest_path_distance(
         cpu
     )
 
-    opponent_distance = shortest_path_distance(
+    opponent_distance = get_shortest_path_distance(
         opponent
     )
 
@@ -3156,79 +3850,44 @@ def evaluate_cpu_wall(
         )
 
     # =====================================================
-    # スコア
-    #
-    # 相手の道を長くするほど高評価
-    # CPU自身の道を長くする壁は低評価
+    # 評価
     # =====================================================
 
     score = 0
 
-    score += opponent_distance * 100
+    # 自分の道は短いほど良い
+    score -= cpu_distance * 50
 
-    score -= cpu_distance * 60
+    # 相手の道は長いほど良い
+    score += opponent_distance * 80
 
-    # -----------------------------------------------------
-    # 相手がCPUよりかなりゴールに近い場合
-    # 壁の価値を高くする
-    # -----------------------------------------------------
-
-    current_cpu_distance = shortest_path_distance(
-        cpu
-    )
-
-    current_opponent_distance = shortest_path_distance(
-        opponent
-    )
-
-    if (
-        current_opponent_distance
-        <
-        current_cpu_distance
-    ):
-
-        score += 100
+    # 相手を遅らせる効果
+    score += (
+        opponent_distance
+        -
+        cpu_distance
+    ) * 20
 
     return score
 
 
 # =========================================================
-# CPU CHOOSE WALL
+# CPU SELECT BEST WALL
 # =========================================================
 
-def cpu_choose_wall():
+def cpu_select_best_wall():
 
     cpu = player2
 
     if cpu["walls"] <= 0:
-        return None
-
-    opponent = player1
-
-    cpu_distance = shortest_path_distance(
-        cpu
-    )
-
-    opponent_distance = shortest_path_distance(
-        opponent
-    )
-
-    # =====================================================
-    # 相手がかなり近い場合のみ壁を積極的に使う
-    # =====================================================
-
-    should_use_wall = (
-        opponent_distance
-        <=
-        cpu_distance
-        + 1
-    )
-
-    if not should_use_wall:
 
         return None
 
     candidates = []
+
+    # =====================================================
+    # 全壁候補
+    # =====================================================
 
     for row in range(8):
 
@@ -3250,166 +3909,63 @@ def cpu_choose_wall():
                 )
             )
 
-    valid_candidates = []
+    # =====================================================
+    # LEVEL 1
+    # =====================================================
+
+    if cpu_level == 1:
+
+        random.shuffle(
+            candidates
+        )
+
+        for kind, row, col in candidates:
+
+            if can_place_wall(
+                kind,
+                row,
+                col
+            ):
+
+                # 簡単CPUは低確率で壁を使う
+
+                if random.random() < 0.25:
+
+                    return (
+                        kind,
+                        row,
+                        col
+                    )
+
+        return None
+
+    # =====================================================
+    # LEVEL 2 / 3
+    # =====================================================
+
+    best_wall = None
+
+    best_score = -999999
 
     for kind, row, col in candidates:
 
-        if can_place_wall(
+        score = evaluate_cpu_wall(
             kind,
             row,
             col
-        ):
+        )
 
-            score = evaluate_cpu_wall(
+        if score > best_score:
+
+            best_score = score
+
+            best_wall = (
                 kind,
                 row,
                 col
             )
 
-            valid_candidates.append(
-                (
-                    score,
-                    kind,
-                    row,
-                    col
-                )
-            )
-
-    if not valid_candidates:
-
-        return None
-
-    valid_candidates.sort(
-        reverse=True
-    )
-
-    # =====================================================
-    # LEVEL 1
-    # 壁はほぼ使わない
-    # =====================================================
-
-    if cpu_level == 1:
-
-        return None
-
-    # =====================================================
-    # LEVEL 2
-    # 上位候補から選ぶ
-    # =====================================================
-
-    if cpu_level == 2:
-
-        top_count = min(
-            3,
-            len(valid_candidates)
-        )
-
-        selected = random.choice(
-            valid_candidates[
-                :top_count
-            ]
-        )
-
-        return (
-            selected[1],
-            selected[2],
-            selected[3]
-        )
-
-    # =====================================================
-    # LEVEL 3
-    # 最善の壁を選択
-    # =====================================================
-
-    best_score = valid_candidates[0][0]
-
-    best_candidates = []
-
-    for candidate in valid_candidates:
-
-        if candidate[0] == best_score:
-
-            best_candidates.append(
-                candidate
-            )
-
-        else:
-
-            break
-
-    selected = random.choice(
-        best_candidates
-    )
-
-    return (
-        selected[1],
-        selected[2],
-        selected[3]
-    )
-
-
-# =========================================================
-# CPU MOVE
-# =========================================================
-
-def cpu_move():
-
-    global game_over
-
-    if game_over:
-        return
-
-    # =====================================================
-    # CPU = PLAYER 2
-    # =====================================================
-
-    cpu = player2
-
-    # =====================================================
-    # CPUの移動候補
-    # =====================================================
-
-    legal_moves = get_legal_moves(
-        cpu
-    )
-
-    if not legal_moves:
-        return
-
-    # =====================================================
-    # CPUが移動する場所を決定
-    # =====================================================
-
-    best_move = cpu_choose_move()
-
-    if best_move is None:
-        return
-
-    row, col = best_move
-
-    # =====================================================
-    # 移動
-    # =====================================================
-
-    cpu["row"] = row
-
-    cpu["col"] = col
-
-    # =====================================================
-    # 勝利判定
-    # =====================================================
-
-    if check_win(cpu):
-
-        game_over = True
-
-        return
-
-    # =====================================================
-    # プレイヤー1へ
-    # =====================================================
-
-    change_turn()
+    return best_wall
 
 
 # =========================================================
@@ -3421,166 +3977,120 @@ def cpu_place_wall():
     global game_over
 
     if game_over:
+
         return
 
     cpu = player2
 
-    # =====================================================
-    # 壁が残っていない
-    # =====================================================
-
     if cpu["walls"] <= 0:
+
         return
 
-    # =====================================================
-    # CPUが置く壁を決定
-    # =====================================================
-
-    wall = cpu_choose_wall()
+    wall = cpu_select_best_wall()
 
     if wall is None:
+
         return
 
     kind, row, col = wall
 
-    # =====================================================
-    # 壁を設置
-    # =====================================================
+    if not can_place_wall(
+        kind,
+        row,
+        col
+    ):
 
-    if kind == "H":
+        return
 
-        horizontal_walls.add(
-            (
-                row,
-                col
-            )
-        )
-
-    else:
-
-        vertical_walls.add(
-            (
-                row,
-                col
-            )
-        )
-
-    # =====================================================
-    # 壁を1枚消費
-    # =====================================================
+    apply_wall(
+        kind,
+        row,
+        col
+    )
 
     cpu["walls"] -= 1
 
-    # =====================================================
-    # プレイヤー1へ
-    # =====================================================
-
-    change_turn()
-
 
 # =========================================================
-# CPU ACTION
-#
-# CPUが「移動」か「壁」を判断する
+# CPU DECISION
 # =========================================================
 
-def cpu_action():
-
-    if game_over:
-        return
+def cpu_decide_action():
 
     cpu = player2
-    opponent = player1
 
-    # =====================================================
-    # CPUの移動距離
-    # =====================================================
+    if cpu["walls"] <= 0:
 
-    cpu_distance = shortest_path_distance(
-        cpu
-    )
-
-    # =====================================================
-    # プレイヤー1の移動距離
-    # =====================================================
-
-    opponent_distance = shortest_path_distance(
-        opponent
-    )
+        return "move"
 
     # =====================================================
     # LEVEL 1
-    #
-    # 基本的に移動する
     # =====================================================
 
     if cpu_level == 1:
 
-        cpu_move()
+        if random.random() < 0.25:
 
-        return
+            return "wall"
+
+        return "move"
 
     # =====================================================
     # LEVEL 2
-    #
-    # 相手が近いときだけ壁を検討
     # =====================================================
 
     if cpu_level == 2:
 
+        cpu_distance = get_shortest_path_distance(
+            cpu
+        )
+
+        opponent_distance = get_shortest_path_distance(
+            player1
+        )
+
         if (
-            cpu["walls"] > 0
-            and
             opponent_distance
             <=
-            cpu_distance
+            cpu_distance + 1
         ):
 
-            wall = cpu_choose_wall()
+            return "wall"
 
-            if wall is not None:
+        if random.random() < 0.25:
 
-                cpu_place_wall()
+            return "wall"
 
-                return
-
-        cpu_move()
-
-        return
+        return "move"
 
     # =====================================================
     # LEVEL 3
-    #
-    # より積極的に壁を使用
     # =====================================================
 
-    if cpu_level == 3:
+    cpu_distance = get_shortest_path_distance(
+        cpu
+    )
 
-        if cpu["walls"] > 0:
+    opponent_distance = get_shortest_path_distance(
+        player1
+    )
 
-            wall = cpu_choose_wall()
+    # 相手がかなり近い場合
+    if opponent_distance <= cpu_distance:
 
-            if wall is not None:
+        return "wall"
 
-                # -------------------------------------------------
-                # 壁を置く価値があるか確認
-                # -------------------------------------------------
+    # 自分がゴール目前なら移動
+    if cpu_distance <= 2:
 
-                if (
-                    opponent_distance
-                    <=
-                    cpu_distance + 2
-                ):
+        return "move"
 
-                    cpu_place_wall()
+    # それ以外は状況によって壁
+    if opponent_distance <= cpu_distance + 2:
 
-                    return
+        return "wall"
 
-        # -------------------------------------------------
-        # 壁を置かない場合は移動
-        # -------------------------------------------------
-
-        cpu_move()
+    return "move"
 
 
 # =========================================================
@@ -3589,10 +4099,15 @@ def cpu_action():
 
 def cpu_turn():
 
+    global cpu_waiting
+    global cpu_wait_start
+
     if not cpu_mode:
+
         return
 
     if game_over:
+
         return
 
     # =====================================================
@@ -3600,31 +4115,26 @@ def cpu_turn():
     # =====================================================
 
     if turn != 2:
+
         return
 
     # =====================================================
-    # CPUのターン開始時間を記録
-    #
-    # 約0.5秒待ってから行動する
+    # CPUのターン開始
     # =====================================================
 
-    global cpu_wait_start
+    if not cpu_waiting:
+
+        cpu_waiting = True
+
+        cpu_wait_start = pygame.time.get_ticks()
+
+        return
+
+    # =====================================================
+    # 0.5秒待つ
+    # =====================================================
 
     current_time = pygame.time.get_ticks()
-
-    # -----------------------------------------------------
-    # まだ開始時間が設定されていない
-    # -----------------------------------------------------
-
-    if cpu_wait_start is None:
-
-        cpu_wait_start = current_time
-
-        return
-
-    # =====================================================
-    # 0.5秒経過したか確認
-    # =====================================================
 
     elapsed_time = (
         current_time
@@ -3640,13 +4150,38 @@ def cpu_turn():
     # CPU行動
     # =====================================================
 
-    cpu_action()
+    cpu_waiting = False
+
+    action = cpu_decide_action()
 
     # =====================================================
-    # 次回のためにリセット
+    # 移動
     # =====================================================
 
-    cpu_wait_start = None
+    if action == "move":
+
+        cpu_move()
+
+    # =====================================================
+    # 壁
+    # =====================================================
+
+    elif action == "wall":
+
+        cpu_place_wall()
+
+        # 壁を置いたらターン交代
+        change_turn()
+
+
+# =========================================================
+# INITIALIZE CPU TIMER
+# =========================================================
+
+cpu_waiting = False
+
+cpu_wait_start = 0
+
 
 # =========================================================
 # MAIN LOOP
@@ -3676,9 +4211,9 @@ while running:
 
         elif event.type == pygame.KEYDOWN:
 
-            # =================================================
+            # =============================================
             # TITLE SCREEN
-            # =================================================
+            # =============================================
 
             if scene == "title":
 
@@ -3688,9 +4223,9 @@ while running:
 
                 continue
 
-            # =================================================
+            # =============================================
             # CPU LEVEL SELECT
-            # =================================================
+            # =============================================
 
             if scene == "cpu_select":
 
@@ -3700,25 +4235,9 @@ while running:
 
                 continue
 
-            # =================================================
+            # =============================================
             # GAME SCREEN
-            # =================================================
-
-            # -------------------------------------------------
-            # CPU TURN
-            #
-            # CPUのターン中はキーボード操作を受け付けない
-            # -------------------------------------------------
-
-            if (
-                cpu_mode
-                and
-                turn == 2
-                and
-                not game_over
-            ):
-
-                continue
+            # =============================================
 
             # -------------------------------------------------
             # MOVE MODE
@@ -3775,7 +4294,6 @@ while running:
                 continue
 
             mouse_x = event.pos[0]
-
             mouse_y = event.pos[1]
 
             # =================================================
@@ -3924,9 +4442,9 @@ while running:
             # GAME SCREEN
             # =================================================
 
-            # -------------------------------------------------
+            # ---------------------------------------------
             # RESET BUTTON
-            # -------------------------------------------------
+            # ---------------------------------------------
 
             reset_button = pygame.Rect(
                 680,
@@ -3944,31 +4462,25 @@ while running:
 
                 continue
 
-            # -------------------------------------------------
+            # ---------------------------------------------
             # GAME OVER
-            # -------------------------------------------------
+            # ---------------------------------------------
 
             if game_over:
 
                 continue
 
-            # -------------------------------------------------
+            # ---------------------------------------------
             # CPU TURN
-            #
-            # CPUのターン中は人間側のクリックを無視
-            # -------------------------------------------------
+            # ---------------------------------------------
 
-            if (
-                cpu_mode
-                and
-                turn == 2
-            ):
+            if cpu_mode and turn == 2:
 
                 continue
 
-            # -------------------------------------------------
+            # ---------------------------------------------
             # WALL MODE
-            # -------------------------------------------------
+            # ---------------------------------------------
 
             if mode == "wall":
 
@@ -3976,9 +4488,9 @@ while running:
 
                 continue
 
-            # -------------------------------------------------
+            # ---------------------------------------------
             # MOVE MODE
-            # -------------------------------------------------
+            # ---------------------------------------------
 
             cell = mouse_to_cell(
                 mouse_x,
@@ -4074,4 +4586,3 @@ while running:
 pygame.quit()
 
 sys.exit()
-
