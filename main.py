@@ -1,6 +1,7 @@
 import pygame
 import sys
 import random
+import asyncio
 from collections import deque
 
 
@@ -15,7 +16,7 @@ BOARD_X = 70
 BOARD_Y = 80
 
 WINDOW_WIDTH = 850
-WINDOW_HEIGHT = 850
+WINDOW_HEIGHT = 950
 
 FPS = 60
 
@@ -23,6 +24,18 @@ WALL_WIDTH = 12
 
 # CPUの思考時間
 CPU_THINK_TIME = 500
+
+
+# =========================================================
+# MOBILE / TOUCH SETTINGS
+# =========================================================
+
+MOBILE_BUTTON_Y = 840
+MOBILE_BUTTON_HEIGHT = 75
+
+# 壁をタップするときの判定範囲
+# PCのマウスより少し広め
+WALL_TOUCH_RANGE = 28
 
 
 # =========================================================
@@ -5015,9 +5028,9 @@ def wall_from_mouse(
     # =====================================================
 
     if (
-        vertical_distance > 18
+        vertical_distance > WALL_TOUCH_RANGE
         and
-        horizontal_distance > 18
+        horizontal_distance > WALL_TOUCH_RANGE
     ):
 
         return None
@@ -5331,21 +5344,22 @@ def move_player(
 
 # =========================================================
 # HUMAN PLACE WALL
+#
+# PC:
+# マウス位置を使用
+#
+# MOBILE:
+# タップイベントの座標を直接使用
 # =========================================================
 
-def place_wall():
-
-    # =====================================================
-    # GAME OVER
-    # =====================================================
+def place_wall(
+    mouse_x=None,
+    mouse_y=None
+):
 
     if game_over:
 
         return False
-
-    # =====================================================
-    # WALL MODEのみ
-    # =====================================================
 
     if mode != "wall":
 
@@ -5363,10 +5377,6 @@ def place_wall():
 
         return False
 
-    # =====================================================
-    # 現在のプレイヤー
-    # =====================================================
-
     player = get_current_player()
 
     # =====================================================
@@ -5378,12 +5388,23 @@ def place_wall():
         return False
 
     # =====================================================
-    # マウス位置
+    # 座標が指定されていない場合
+    # PCのマウス位置を使用
     # =====================================================
 
-    mouse_x, mouse_y = (
-        pygame.mouse.get_pos()
-    )
+    if (
+        mouse_x is None
+        or
+        mouse_y is None
+    ):
+
+        mouse_x, mouse_y = (
+            pygame.mouse.get_pos()
+        )
+
+    # =====================================================
+    # 壁位置取得
+    # =====================================================
 
     wall = wall_from_mouse(
         mouse_x,
@@ -5409,7 +5430,7 @@ def place_wall():
         return False
 
     # =====================================================
-    # 壁設置
+    # 設置
     # =====================================================
 
     apply_wall(
@@ -5418,15 +5439,7 @@ def place_wall():
         col
     )
 
-    # =====================================================
-    # 壁を消費
-    # =====================================================
-
     player["walls"] -= 1
-
-    # =====================================================
-    # ターン交代
-    # =====================================================
 
     change_turn()
 
@@ -6227,13 +6240,13 @@ def draw_information():
     if mode == "move":
 
         mode_text = (
-            "MOVE MODE  |  W: Wall Mode"
+            "MOVE MODE"
         )
 
     else:
 
         mode_text = (
-            "WALL MODE  |  M: Move Mode"
+            "WALL MODE"
         )
 
     mode_surface = small_font.render(
@@ -6336,9 +6349,212 @@ def draw_reset_button():
 
 
 # =========================================================
-# DRAW GAME SCREEN
+# MOBILE CONTROL RECTS
 #
-# ゲーム中の描画を1つにまとめる
+# MOVE / WALL / MENU
+# =========================================================
+
+def get_mobile_control_rects():
+
+    move_button = pygame.Rect(
+        70,
+        MOBILE_BUTTON_Y,
+        220,
+        MOBILE_BUTTON_HEIGHT
+    )
+
+    wall_button = pygame.Rect(
+        315,
+        MOBILE_BUTTON_Y,
+        220,
+        MOBILE_BUTTON_HEIGHT
+    )
+
+    menu_button = pygame.Rect(
+        560,
+        MOBILE_BUTTON_Y,
+        220,
+        MOBILE_BUTTON_HEIGHT
+    )
+
+    return (
+        move_button,
+        wall_button,
+        menu_button
+    )
+
+
+# =========================================================
+# DRAW MOBILE CONTROLS
+# =========================================================
+
+def draw_mobile_controls():
+
+    (
+        move_button,
+        wall_button,
+        menu_button
+    ) = get_mobile_control_rects()
+
+    mouse_position = (
+        pygame.mouse.get_pos()
+    )
+
+    # =====================================================
+    # MOVE BUTTON
+    # =====================================================
+
+    if mode == "move":
+
+        move_color = MOVE_COLOR
+
+    elif move_button.collidepoint(
+        mouse_position
+    ):
+
+        move_color = BUTTON_HOVER
+
+    else:
+
+        move_color = BUTTON_COLOR
+
+    pygame.draw.rect(
+        screen,
+        move_color,
+        move_button,
+        border_radius=12
+    )
+
+    pygame.draw.rect(
+        screen,
+        BLACK,
+        move_button,
+        2,
+        border_radius=12
+    )
+
+    text = option_font.render(
+        "MOVE",
+        True,
+        BLACK
+    )
+
+    screen.blit(
+        text,
+        (
+            move_button.centerx
+            -
+            text.get_width() // 2,
+
+            move_button.centery
+            -
+            text.get_height() // 2
+        )
+    )
+
+    # =====================================================
+    # WALL BUTTON
+    # =====================================================
+
+    if mode == "wall":
+
+        wall_color = PREVIEW_VALID
+
+    elif wall_button.collidepoint(
+        mouse_position
+    ):
+
+        wall_color = BUTTON_HOVER
+
+    else:
+
+        wall_color = BUTTON_COLOR
+
+    pygame.draw.rect(
+        screen,
+        wall_color,
+        wall_button,
+        border_radius=12
+    )
+
+    pygame.draw.rect(
+        screen,
+        BLACK,
+        wall_button,
+        2,
+        border_radius=12
+    )
+
+    text = option_font.render(
+        "WALL",
+        True,
+        BLACK
+    )
+
+    screen.blit(
+        text,
+        (
+            wall_button.centerx
+            -
+            text.get_width() // 2,
+
+            wall_button.centery
+            -
+            text.get_height() // 2
+        )
+    )
+
+    # =====================================================
+    # MENU BUTTON
+    # =====================================================
+
+    if menu_button.collidepoint(
+        mouse_position
+    ):
+
+        menu_color = BUTTON_HOVER
+
+    else:
+
+        menu_color = BUTTON_COLOR
+
+    pygame.draw.rect(
+        screen,
+        menu_color,
+        menu_button,
+        border_radius=12
+    )
+
+    pygame.draw.rect(
+        screen,
+        BLACK,
+        menu_button,
+        2,
+        border_radius=12
+    )
+
+    text = option_font.render(
+        "MENU",
+        True,
+        BLACK
+    )
+
+    screen.blit(
+        text,
+        (
+            menu_button.centerx
+            -
+            text.get_width() // 2,
+
+            menu_button.centery
+            -
+            text.get_height() // 2
+        )
+    )
+
+
+# =========================================================
+# DRAW GAME SCREEN
 # =========================================================
 
 def draw_game_screen():
@@ -6370,6 +6586,12 @@ def draw_game_screen():
     draw_wall_preview()
 
     draw_information()
+
+    # =====================================================
+    # MOBILE BUTTONS
+    # =====================================================
+
+    draw_mobile_controls()
 
     return draw_reset_button()
 
@@ -6829,79 +7051,458 @@ def draw_cpu_level_screen():
 
 
 # =========================================================
-# MAIN LOOP
+# ASYNC MAIN LOOP
+#
+# Desktop + Pygbag Web
+# 両対応
 # =========================================================
 
-running = True
+async def main():
 
-while running:
+    global scene
+    global cpu_mode
+    global cpu_level
+    global mode
 
-    # =====================================================
-    # EVENTS
-    # =====================================================
+    running = True
 
-    for event in pygame.event.get():
-
-        # =================================================
-        # WINDOW CLOSE
-        # =================================================
-
-        if event.type == pygame.QUIT:
-
-            running = False
-
+    while running:
 
         # =================================================
-        # KEYBOARD
+        # EVENTS
         # =================================================
 
-        elif event.type == pygame.KEYDOWN:
+        for event in pygame.event.get():
 
             # =============================================
-            # TITLE SCREEN
+            # WINDOW CLOSE
             # =============================================
 
-            if scene == "title":
+            if event.type == pygame.QUIT:
 
-                if event.key == pygame.K_ESCAPE:
-
-                    running = False
-
-                continue
+                running = False
 
 
             # =============================================
-            # CPU LEVEL SELECT
+            # KEYBOARD
+            #
+            # PC版では今まで通り使用可能
             # =============================================
 
-            if scene == "cpu_select":
+            elif event.type == pygame.KEYDOWN:
 
-                if event.key == pygame.K_ESCAPE:
+                # =========================================
+                # TITLE
+                # =========================================
 
-                    scene = "title"
+                if scene == "title":
 
-                    cpu_mode = False
+                    if event.key == pygame.K_ESCAPE:
 
-                continue
+                        running = False
+
+                    continue
+
+
+                # =========================================
+                # CPU LEVEL SELECT
+                # =========================================
+
+                if scene == "cpu_select":
+
+                    if event.key == pygame.K_ESCAPE:
+
+                        scene = "title"
+
+                        cpu_mode = False
+
+                    continue
+
+
+                # =========================================
+                # GAME
+                # =========================================
+
+                if scene == "game":
+
+                    # -------------------------------------
+                    # MOVE MODE
+                    # -------------------------------------
+
+                    if event.key == pygame.K_m:
+
+                        if game_over:
+
+                            continue
+
+                        if (
+                            cpu_mode
+                            and
+                            turn == 2
+                        ):
+
+                            continue
+
+                        mode = "move"
+
+
+                    # -------------------------------------
+                    # WALL MODE
+                    # -------------------------------------
+
+                    elif event.key == pygame.K_w:
+
+                        if game_over:
+
+                            continue
+
+                        if (
+                            cpu_mode
+                            and
+                            turn == 2
+                        ):
+
+                            continue
+
+                        current_player = (
+                            get_current_player()
+                        )
+
+                        if (
+                            current_player["walls"]
+                            >
+                            0
+                        ):
+
+                            mode = "wall"
+
+
+                    # -------------------------------------
+                    # RESET
+                    # -------------------------------------
+
+                    elif event.key == pygame.K_r:
+
+                        reset_game()
+
+
+                    # -------------------------------------
+                    # ESC
+                    # -------------------------------------
+
+                    elif event.key == pygame.K_ESCAPE:
+
+                        scene = "title"
+
+                        cpu_mode = False
+
+                        reset_game()
 
 
             # =============================================
-            # GAME SCREEN
+            # MOUSE / TOUCH
+            #
+            # pygame-ceではスマホのタップも
+            # MOUSEBUTTONDOWNとして扱える
             # =============================================
 
-            if scene == "game":
+            elif event.type == pygame.MOUSEBUTTONDOWN:
 
-                # -----------------------------------------
-                # MOVE MODE
-                # -----------------------------------------
+                if event.button != 1:
 
-                if event.key == pygame.K_m:
+                    continue
+
+                mouse_x = event.pos[0]
+                mouse_y = event.pos[1]
+
+
+                # =========================================
+                # TITLE SCREEN
+                # =========================================
+
+                if scene == "title":
+
+                    pvp_button = pygame.Rect(
+                        250,
+                        320,
+                        350,
+                        70
+                    )
+
+                    cpu_button = pygame.Rect(
+                        250,
+                        430,
+                        350,
+                        70
+                    )
+
+                    # -------------------------------------
+                    # PLAYER vs PLAYER
+                    # -------------------------------------
+
+                    if pvp_button.collidepoint(
+                        mouse_x,
+                        mouse_y
+                    ):
+
+                        cpu_mode = False
+
+                        scene = "game"
+
+                        reset_game()
+
+
+                    # -------------------------------------
+                    # PLAYER vs CPU
+                    # -------------------------------------
+
+                    elif cpu_button.collidepoint(
+                        mouse_x,
+                        mouse_y
+                    ):
+
+                        cpu_mode = True
+
+                        scene = "cpu_select"
+
+                    continue
+
+
+                # =========================================
+                # CPU LEVEL SELECT
+                # =========================================
+
+                if scene == "cpu_select":
+
+                    level1_button = pygame.Rect(
+                        250,
+                        270,
+                        350,
+                        70
+                    )
+
+                    level2_button = pygame.Rect(
+                        250,
+                        370,
+                        350,
+                        70
+                    )
+
+                    level3_button = pygame.Rect(
+                        250,
+                        470,
+                        350,
+                        70
+                    )
+
+                    back_button = pygame.Rect(
+                        330,
+                        590,
+                        190,
+                        50
+                    )
+
+                    # -------------------------------------
+                    # LEVEL 1
+                    # -------------------------------------
+
+                    if level1_button.collidepoint(
+                        mouse_x,
+                        mouse_y
+                    ):
+
+                        cpu_level = 1
+
+                        cpu_mode = True
+
+                        scene = "game"
+
+                        reset_game()
+
+
+                    # -------------------------------------
+                    # LEVEL 2
+                    # -------------------------------------
+
+                    elif level2_button.collidepoint(
+                        mouse_x,
+                        mouse_y
+                    ):
+
+                        cpu_level = 2
+
+                        cpu_mode = True
+
+                        scene = "game"
+
+                        reset_game()
+
+
+                    # -------------------------------------
+                    # LEVEL 3
+                    # -------------------------------------
+
+                    elif level3_button.collidepoint(
+                        mouse_x,
+                        mouse_y
+                    ):
+
+                        cpu_level = 3
+
+                        cpu_mode = True
+
+                        scene = "game"
+
+                        reset_game()
+
+
+                    # -------------------------------------
+                    # BACK
+                    # -------------------------------------
+
+                    elif back_button.collidepoint(
+                        mouse_x,
+                        mouse_y
+                    ):
+
+                        cpu_mode = False
+
+                        scene = "title"
+
+                    continue
+
+
+                # =========================================
+                # GAME SCREEN
+                # =========================================
+
+                if scene == "game":
+
+                    # =====================================
+                    # MOBILE BUTTONS
+                    # =====================================
+
+                    (
+                        move_button,
+                        wall_button,
+                        menu_button
+                    ) = get_mobile_control_rects()
+
+
+                    # -------------------------------------
+                    # MOVE BUTTON
+                    # -------------------------------------
+
+                    if move_button.collidepoint(
+                        mouse_x,
+                        mouse_y
+                    ):
+
+                        if game_over:
+
+                            continue
+
+                        if (
+                            cpu_mode
+                            and
+                            turn == 2
+                        ):
+
+                            continue
+
+                        mode = "move"
+
+                        continue
+
+
+                    # -------------------------------------
+                    # WALL BUTTON
+                    # -------------------------------------
+
+                    if wall_button.collidepoint(
+                        mouse_x,
+                        mouse_y
+                    ):
+
+                        if game_over:
+
+                            continue
+
+                        if (
+                            cpu_mode
+                            and
+                            turn == 2
+                        ):
+
+                            continue
+
+                        current_player = (
+                            get_current_player()
+                        )
+
+                        if (
+                            current_player["walls"]
+                            >
+                            0
+                        ):
+
+                            mode = "wall"
+
+                        continue
+
+
+                    # -------------------------------------
+                    # MENU BUTTON
+                    # -------------------------------------
+
+                    if menu_button.collidepoint(
+                        mouse_x,
+                        mouse_y
+                    ):
+
+                        scene = "title"
+
+                        cpu_mode = False
+
+                        reset_game()
+
+                        continue
+
+
+                    # =====================================
+                    # RESET BUTTON
+                    # =====================================
+
+                    reset_button = pygame.Rect(
+                        680,
+                        20,
+                        110,
+                        40
+                    )
+
+                    if reset_button.collidepoint(
+                        mouse_x,
+                        mouse_y
+                    ):
+
+                        reset_game()
+
+                        continue
+
+
+                    # =====================================
+                    # GAME OVER
+                    # =====================================
 
                     if game_over:
 
                         continue
 
-                    # CPUターン中は操作不可
+
+                    # =====================================
+                    # CPU TURN
+                    # =====================================
+
                     if (
                         cpu_mode
                         and
@@ -6910,394 +7511,102 @@ while running:
 
                         continue
 
-                    mode = "move"
 
+                    # =====================================
+                    # WALL MODE
+                    # =====================================
 
-                # -----------------------------------------
-                # WALL MODE
-                # -----------------------------------------
+                    if mode == "wall":
 
-                elif event.key == pygame.K_w:
-
-                    if game_over:
+                        place_wall(
+                            mouse_x,
+                            mouse_y
+                        )
 
                         continue
 
+
                     # =====================================
-                    # CPUターンでは人間操作不可
+                    # MOVE MODE
                     # =====================================
 
-                    if (
-                        cpu_mode
-                        and
-                        turn == 2
-                    ):
-
-                        continue
-
-                    current_player = (
-                        get_current_player()
+                    cell = mouse_to_cell(
+                        mouse_x,
+                        mouse_y
                     )
 
-                    # =====================================
-                    # 壁が残っている場合だけ
-                    # =====================================
+                    if cell is not None:
 
-                    if (
-                        current_player["walls"]
-                        >
-                        0
-                    ):
+                        row, col = cell
 
-                        mode = "wall"
-
-
-                # -----------------------------------------
-                # RESET
-                # -----------------------------------------
-
-                elif event.key == pygame.K_r:
-
-                    reset_game()
-
-
-                # -----------------------------------------
-                # ESC
-                #
-                # タイトルへ戻る
-                # -----------------------------------------
-
-                elif event.key == pygame.K_ESCAPE:
-
-                    scene = "title"
-
-                    cpu_mode = False
-
-                    reset_game()
+                        move_player(
+                            row,
+                            col
+                        )
 
 
         # =================================================
-        # MOUSE
+        # CPU
         # =================================================
 
-        elif event.type == pygame.MOUSEBUTTONDOWN:
+        if (
+            scene == "game"
+            and
+            cpu_mode
+            and
+            turn == 2
+            and
+            not game_over
+        ):
 
-            # 左クリックのみ
-            if event.button != 1:
+            update_cpu_turn()
 
-                continue
 
-            mouse_x = event.pos[0]
-            mouse_y = event.pos[1]
+        # =================================================
+        # DRAW
+        # =================================================
 
+        if scene == "title":
 
-            # =================================================
-            # TITLE SCREEN
-            # =================================================
+            draw_title_screen()
 
-            if scene == "title":
 
-                # -----------------------------------------
-                # BUTTONS
-                # -----------------------------------------
+        elif scene == "cpu_select":
 
-                pvp_button = pygame.Rect(
-                    250,
-                    320,
-                    350,
-                    70
-                )
+            draw_cpu_level_screen()
 
-                cpu_button = pygame.Rect(
-                    250,
-                    430,
-                    350,
-                    70
-                )
 
+        elif scene == "game":
 
-                # -----------------------------------------
-                # PLAYER vs PLAYER
-                # -----------------------------------------
+            draw_game_screen()
 
-                if pvp_button.collidepoint(
-                    mouse_x,
-                    mouse_y
-                ):
 
-                    cpu_mode = False
+        # =================================================
+        # DISPLAY
+        # =================================================
 
-                    scene = "game"
+        pygame.display.flip()
 
-                    reset_game()
+        clock.tick(
+            FPS
+        )
 
+        # =================================================
+        # PYGBAG / WEB
+        #
+        # 必ず毎フレームブラウザへ処理を返す
+        # =================================================
 
-                # -----------------------------------------
-                # PLAYER vs CPU
-                # -----------------------------------------
+        await asyncio.sleep(0)
 
-                elif cpu_button.collidepoint(
-                    mouse_x,
-                    mouse_y
-                ):
 
-                    cpu_mode = True
-
-                    scene = "cpu_select"
-
-                continue
-
-
-            # =================================================
-            # CPU LEVEL SELECT
-            # =================================================
-
-            if scene == "cpu_select":
-
-                level1_button = pygame.Rect(
-                    250,
-                    270,
-                    350,
-                    70
-                )
-
-                level2_button = pygame.Rect(
-                    250,
-                    370,
-                    350,
-                    70
-                )
-
-                level3_button = pygame.Rect(
-                    250,
-                    470,
-                    350,
-                    70
-                )
-
-                back_button = pygame.Rect(
-                    330,
-                    590,
-                    190,
-                    50
-                )
-
-
-                # -----------------------------------------
-                # LEVEL 1
-                # -----------------------------------------
-
-                if level1_button.collidepoint(
-                    mouse_x,
-                    mouse_y
-                ):
-
-                    cpu_level = 1
-
-                    cpu_mode = True
-
-                    scene = "game"
-
-                    reset_game()
-
-
-                # -----------------------------------------
-                # LEVEL 2
-                # -----------------------------------------
-
-                elif level2_button.collidepoint(
-                    mouse_x,
-                    mouse_y
-                ):
-
-                    cpu_level = 2
-
-                    cpu_mode = True
-
-                    scene = "game"
-
-                    reset_game()
-
-
-                # -----------------------------------------
-                # LEVEL 3
-                # -----------------------------------------
-
-                elif level3_button.collidepoint(
-                    mouse_x,
-                    mouse_y
-                ):
-
-                    cpu_level = 3
-
-                    cpu_mode = True
-
-                    scene = "game"
-
-                    reset_game()
-
-
-                # -----------------------------------------
-                # BACK
-                # -----------------------------------------
-
-                elif back_button.collidepoint(
-                    mouse_x,
-                    mouse_y
-                ):
-
-                    cpu_mode = False
-
-                    scene = "title"
-
-                continue
-
-
-            # =================================================
-            # GAME SCREEN
-            # =================================================
-
-            if scene == "game":
-
-                # -----------------------------------------
-                # RESET BUTTON
-                # -----------------------------------------
-
-                reset_button = pygame.Rect(
-                    680,
-                    20,
-                    110,
-                    40
-                )
-
-                if reset_button.collidepoint(
-                    mouse_x,
-                    mouse_y
-                ):
-
-                    reset_game()
-
-                    continue
-
-
-                # -----------------------------------------
-                # GAME OVER
-                # -----------------------------------------
-
-                if game_over:
-
-                    continue
-
-
-                # -----------------------------------------
-                # CPU TURN
-                #
-                # CPUターン中は
-                # 人間のクリックを完全に無効化
-                # -----------------------------------------
-
-                if (
-                    cpu_mode
-                    and
-                    turn == 2
-                ):
-
-                    continue
-
-
-                # -----------------------------------------
-                # WALL MODE
-                # -----------------------------------------
-
-                if mode == "wall":
-
-                    place_wall()
-
-                    continue
-
-
-                # -----------------------------------------
-                # MOVE MODE
-                # -----------------------------------------
-
-                cell = mouse_to_cell(
-                    mouse_x,
-                    mouse_y
-                )
-
-                if cell is not None:
-
-                    row, col = cell
-
-                    move_player(
-                        row,
-                        col
-                    )
-
-
-    # =====================================================
-    # CPU TURN UPDATE
-    #
-    # ・CPUターン開始
-    # ・500ms待機
-    # ・AI思考
-    # ・1回だけ行動
-    #
-    # をPART6の関数で管理
-    # =====================================================
-
-    if (
-        scene == "game"
-        and
-        cpu_mode
-        and
-        turn == 2
-        and
-        not game_over
-    ):
-
-        update_cpu_turn()
-
-
-    # =====================================================
-    # DRAW
-    # =====================================================
-
-    if scene == "title":
-
-        draw_title_screen()
-
-
-    elif scene == "cpu_select":
-
-        draw_cpu_level_screen()
-
-
-    elif scene == "game":
-
-        draw_game_screen()
-
-
-    # =====================================================
-    # DISPLAY UPDATE
-    # =====================================================
-
-    pygame.display.flip()
-
-
-    # =====================================================
-    # FPS
-    # =====================================================
-
-    clock.tick(
-        FPS
-    )
+    pygame.quit()
 
 
 # =========================================================
-# QUIT
+# START
 # =========================================================
 
-pygame.quit()
-
-sys.exit()
+asyncio.run(
+    main()
+)
