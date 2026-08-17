@@ -173,6 +173,30 @@ vertical_walls = set()
 
 
 # =========================================================
+# WALL PREVIEW STATE
+# =========================================================
+
+# 現在選択している向き
+# "H" = 横
+# "V" = 縦
+wall_selected_kind = "H"
+
+# 仮置き中の壁
+# ("H", row, col)
+# ("V", row, col)
+# None
+wall_preview_candidate = None
+
+
+# =========================================================
+# WALL OPTION BUTTONS
+# =========================================================
+
+WALL_OPTION_Y = 755
+WALL_OPTION_HEIGHT = 58
+
+
+# =========================================================
 # GAME STATE
 # =========================================================
 
@@ -5395,6 +5419,7 @@ def change_turn():
     global cpu_thinking
     global cpu_thinking_start
     global wall_dragging
+    global wall_preview_candidate
 
     # =====================================================
     # PLAYER 1 → PLAYER 2
@@ -5417,6 +5442,8 @@ def change_turn():
     # =====================================================
 
     mode = "move"
+
+    wall_preview_candidate = None
 
     # =====================================================
     # CPUタイマーをリセット
@@ -5448,9 +5475,16 @@ def reset_game():
     global wall_drag_kind
     global wall_drag_candidate
 
+    global wall_selected_kind
+    global wall_preview_candidate
+
     # =====================================================
     # PLAYER POSITION
     # =====================================================
+
+    wall_selected_kind = "H"
+
+    wall_preview_candidate = None
 
     if cpu_mode:
 
@@ -6616,42 +6650,23 @@ def draw_wall_preview():
         return
 
     # =====================================================
-    # DRAG中
+    # WEB
+    #
+    # タップで決めた仮置き壁を表示
     # =====================================================
 
-    if wall_dragging:
+    if IS_WEB:
 
-        wall = (
-            wall_drag_candidate
-        )
-
-        # =================================================
-        # まだ方向が決まっていない
-        # =================================================
-
-        if wall is None:
-
-            guide = small_font.render(
-                "DRAG HORIZONTALLY OR VERTICALLY",
-                True,
-                BLACK
-            )
-
-            screen.blit(
-                guide,
-                (
-                    WINDOW_WIDTH // 2
-                    -
-                    guide.get_width() // 2,
-
-                    812
-                )
-            )
+        if wall_preview_candidate is None:
 
             return
 
+        wall = wall_preview_candidate
+
     # =====================================================
-    # PCマウス
+    # PC
+    #
+    # 従来通りマウス位置をプレビュー
     # =====================================================
 
     else:
@@ -6669,11 +6684,11 @@ def draw_wall_preview():
 
             return
 
-    # =====================================================
-    # 今表示する壁
-    # =====================================================
-
     kind, row, col = wall
+
+    # =====================================================
+    # 合法判定
+    # =====================================================
 
     valid = can_place_wall(
         kind,
@@ -6689,19 +6704,9 @@ def draw_wall_preview():
 
         color = PREVIEW_INVALID
 
-    # =====================================================
-    # DRAG中は太く
-    # =====================================================
-
-    if wall_dragging:
-
-        preview_width = (
-            WALL_WIDTH + 8
-        )
-
-    else:
-
-        preview_width = WALL_WIDTH
+    preview_width = (
+        WALL_WIDTH + 7
+    )
 
     # =====================================================
     # HORIZONTAL
@@ -6777,41 +6782,6 @@ def draw_wall_preview():
                 y2
             ),
             preview_width
-        )
-
-    # =====================================================
-    # MOBILE GUIDE
-    # =====================================================
-
-    if wall_dragging:
-
-        if valid:
-
-            message = (
-                "RELEASE TO PLACE"
-            )
-
-        else:
-
-            message = (
-                "CAN'T PLACE HERE"
-            )
-
-        guide = font.render(
-            message,
-            True,
-            color
-        )
-
-        screen.blit(
-            guide,
-            (
-                WINDOW_WIDTH // 2
-                -
-                guide.get_width() // 2,
-
-                810
-            )
         )
 
 
@@ -7151,6 +7121,479 @@ def get_mobile_control_rects():
         wall_button,
         menu_button
     )
+
+
+# =========================================================
+# WALL OPTION RECTS
+# =========================================================
+
+def get_wall_option_rects():
+
+    horizontal_button = pygame.Rect(
+        70,
+        WALL_OPTION_Y,
+        220,
+        WALL_OPTION_HEIGHT
+    )
+
+    vertical_button = pygame.Rect(
+        315,
+        WALL_OPTION_Y,
+        220,
+        WALL_OPTION_HEIGHT
+    )
+
+    place_button = pygame.Rect(
+        560,
+        WALL_OPTION_Y,
+        220,
+        WALL_OPTION_HEIGHT
+    )
+
+    return (
+        horizontal_button,
+        vertical_button,
+        place_button
+    )
+
+
+# =========================================================
+# SELECT WALL KIND
+# =========================================================
+
+def select_wall_kind(
+    kind
+):
+
+    global wall_selected_kind
+    global wall_preview_candidate
+
+    wall_selected_kind = kind
+
+    # 向きを変更したら
+    # 前の仮置きは一旦消す
+    wall_preview_candidate = None
+
+
+# =========================================================
+# SNAP WALL
+#
+# タップ位置に最も近い
+# 2マス分の壁位置へ吸着
+# =========================================================
+
+def get_snapped_wall(
+    kind,
+    x,
+    y
+):
+
+    relative_x = (
+        x
+        -
+        BOARD_X
+    )
+
+    relative_y = (
+        y
+        -
+        BOARD_Y
+    )
+
+    # =====================================================
+    # 盤面外
+    # =====================================================
+
+    if (
+        relative_x < 0
+        or
+        relative_y < 0
+        or
+        relative_x > BOARD_SIZE * CELL_SIZE
+        or
+        relative_y > BOARD_SIZE * CELL_SIZE
+    ):
+
+        return None
+
+    # =====================================================
+    # 壁の中心位置から
+    # row / col を計算
+    # =====================================================
+
+    col = round(
+        relative_x / CELL_SIZE
+        -
+        1
+    )
+
+    row = round(
+        relative_y / CELL_SIZE
+        -
+        1
+    )
+
+    # =====================================================
+    # 壁の開始位置は0～7
+    # =====================================================
+
+    row = max(
+        0,
+        min(
+            7,
+            row
+        )
+    )
+
+    col = max(
+        0,
+        min(
+            7,
+            col
+        )
+    )
+
+    return (
+        kind,
+        int(row),
+        int(col)
+    )
+
+
+# =========================================================
+# SET WALL PREVIEW
+#
+# 盤面タップでは設置しない
+# 仮置きするだけ
+# =========================================================
+
+def set_wall_preview(
+    x,
+    y
+):
+
+    global wall_preview_candidate
+
+    if game_over:
+
+        return False
+
+    if mode != "wall":
+
+        return False
+
+    if (
+        cpu_mode
+        and
+        turn == 2
+    ):
+
+        return False
+
+    player = get_current_player()
+
+    if player["walls"] <= 0:
+
+        return False
+
+    candidate = get_snapped_wall(
+        wall_selected_kind,
+        x,
+        y
+    )
+
+    if candidate is None:
+
+        return False
+
+    wall_preview_candidate = candidate
+
+    return True
+
+
+# =========================================================
+# CONFIRM WALL
+#
+# PLACEボタンを押した時だけ実際に設置
+# =========================================================
+
+def confirm_wall_preview():
+
+    global wall_preview_candidate
+
+    if wall_preview_candidate is None:
+
+        return False
+
+    if game_over:
+
+        return False
+
+    if mode != "wall":
+
+        return False
+
+    if (
+        cpu_mode
+        and
+        turn == 2
+    ):
+
+        return False
+
+    player = get_current_player()
+
+    if player["walls"] <= 0:
+
+        return False
+
+    kind, row, col = (
+        wall_preview_candidate
+    )
+
+    # =====================================================
+    # 赤い壁なら設置しない
+    # =====================================================
+
+    if not can_place_wall(
+        kind,
+        row,
+        col
+    ):
+
+        return False
+
+    # =====================================================
+    # 本設置
+    # =====================================================
+
+    apply_wall(
+        kind,
+        row,
+        col
+    )
+
+    player["walls"] -= 1
+
+    wall_preview_candidate = None
+
+    change_turn()
+
+    return True
+
+
+# =========================================================
+# DRAW WALL OPTION CONTROLS
+# =========================================================
+
+def draw_wall_option_controls():
+
+
+    # =====================================================
+    # WEB版だけ表示
+    # =====================================================
+
+    if not IS_WEB:
+        return
+
+    if mode != "wall":
+
+        return
+
+    if game_over:
+
+        return
+
+    if (
+        cpu_mode
+        and
+        turn == 2
+    ):
+
+        return
+
+    (
+        horizontal_button,
+        vertical_button,
+        place_button
+    ) = get_wall_option_rects()
+
+    normal_color = (
+        235,
+        235,
+        235
+    )
+
+    selected_color = (
+        190,
+        235,
+        190
+    )
+
+    # =====================================================
+    # HORIZONTAL
+    # =====================================================
+
+    if wall_selected_kind == "H":
+
+        h_color = selected_color
+
+    else:
+
+        h_color = normal_color
+
+    pygame.draw.rect(
+        screen,
+        h_color,
+        horizontal_button,
+        border_radius=12
+    )
+
+    pygame.draw.rect(
+        screen,
+        BLACK,
+        horizontal_button,
+        3,
+        border_radius=12
+    )
+
+    text = small_font.render(
+        "HORIZONTAL",
+        True,
+        BLACK
+    )
+
+    screen.blit(
+        text,
+        (
+            horizontal_button.centerx
+            -
+            text.get_width() // 2,
+
+            horizontal_button.centery
+            -
+            text.get_height() // 2
+        )
+    )
+
+    # =====================================================
+    # VERTICAL
+    # =====================================================
+
+    if wall_selected_kind == "V":
+
+        v_color = selected_color
+
+    else:
+
+        v_color = normal_color
+
+    pygame.draw.rect(
+        screen,
+        v_color,
+        vertical_button,
+        border_radius=12
+    )
+
+    pygame.draw.rect(
+        screen,
+        BLACK,
+        vertical_button,
+        3,
+        border_radius=12
+    )
+
+    text = small_font.render(
+        "VERTICAL",
+        True,
+        BLACK
+    )
+
+    screen.blit(
+        text,
+        (
+            vertical_button.centerx
+            -
+            text.get_width() // 2,
+
+            vertical_button.centery
+            -
+            text.get_height() // 2
+        )
+    )
+
+    # =====================================================
+    # PLACE
+    # =====================================================
+
+    if wall_preview_candidate is None:
+
+        place_color = (
+            180,
+            180,
+            180
+        )
+
+    else:
+
+        kind, row, col = (
+            wall_preview_candidate
+        )
+
+        if can_place_wall(
+            kind,
+            row,
+            col
+        ):
+
+            place_color = (
+                170,
+                235,
+                170
+            )
+
+        else:
+
+            place_color = (
+                235,
+                170,
+                170
+            )
+
+    pygame.draw.rect(
+        screen,
+        place_color,
+        place_button,
+        border_radius=12
+    )
+
+    pygame.draw.rect(
+        screen,
+        BLACK,
+        place_button,
+        3,
+        border_radius=12
+    )
+
+    text = font.render(
+        "PLACE",
+        True,
+        BLACK
+    )
+
+    screen.blit(
+        text,
+        (
+            place_button.centerx
+            -
+            text.get_width() // 2,
+
+            place_button.centery
+            -
+            text.get_height() // 2
+        )
+    )
+
 
 
 # =========================================================
@@ -7598,6 +8041,8 @@ def draw_game_screen():
     # =====================================================
     # MOBILE BUTTONS
     # =====================================================
+
+    draw_wall_option_controls()
 
     draw_mobile_controls()
 
@@ -8077,6 +8522,7 @@ async def main():
     global cpu_mode
     global cpu_level
     global mode
+    global wall_preview_candidate
 
     running = True
 
@@ -8159,6 +8605,8 @@ async def main():
 
                         mode = "move"
 
+                        wall_preview_candidate = Nonev
+
 
                     # -------------------------------------
                     # WALL MODE
@@ -8189,6 +8637,8 @@ async def main():
                         ):
 
                             mode = "wall"
+
+                            wall_preview_candidate = None
 
 
                     # -------------------------------------
@@ -8406,6 +8856,67 @@ async def main():
                     ) = get_mobile_control_rects()
 
 
+                    (
+                        horizontal_button,
+                        vertical_button,
+                        place_button
+                    ) = get_wall_option_rects()
+
+
+                    # =====================================
+                    # WEB WALL OPTION BUTTONS
+                    # =====================================
+
+                    if (
+                        IS_WEB
+                        and
+                        mode == "wall"
+                    ):
+
+                        # =================================
+                        # HORIZONTAL
+                        # =================================
+
+                        if horizontal_button.collidepoint(
+                            mouse_x,
+                            mouse_y
+                        ):
+
+                            select_wall_kind(
+                                "H"
+                            )
+
+                            continue
+
+                        # =================================
+                        # VERTICAL
+                        # =================================
+
+                        if vertical_button.collidepoint(
+                            mouse_x,
+                            mouse_y
+                        ):
+
+                            select_wall_kind(
+                                "V"
+                            )
+
+                            continue
+
+                        # =================================
+                        # PLACE
+                        # =================================
+
+                        if place_button.collidepoint(
+                            mouse_x,
+                            mouse_y
+                        ):
+
+                            confirm_wall_preview()
+
+                            continue
+
+
                     # -------------------------------------
                     # MOVE BUTTON
                     # -------------------------------------
@@ -8569,13 +9080,13 @@ async def main():
                         # =================================
                         # WEB / SMARTPHONE
                         #
-                        # タップ位置から
-                        # 自動スナップして壁設置
+                        # ここでは設置しない。
+                        # 仮置き位置だけ決める。
                         # =================================
 
                         if IS_WEB:
 
-                            place_touch_wall(
+                            set_wall_preview(
                                 mouse_x,
                                 mouse_y
                             )
@@ -8583,7 +9094,7 @@ async def main():
                         # =================================
                         # PC
                         #
-                        # 従来の正確なマウス操作
+                        # 従来通り即設置
                         # =================================
 
                         else:
