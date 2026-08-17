@@ -123,6 +123,18 @@ option_font = pygame.font.SysFont(
     28
 )
 
+win_font = pygame.font.SysFont(
+    "Arial",
+    72,
+    bold=True
+)
+
+win_sub_font = pygame.font.SysFont(
+    "Arial",
+    26,
+    bold=True
+)
+
 
 # =========================================================
 # PLAYERS
@@ -178,6 +190,15 @@ cpu_level = 1
 # CPU THINKING
 cpu_thinking = False
 cpu_thinking_start = 0
+
+
+# =========================================================
+# WALL DRAG STATE
+# =========================================================
+
+wall_dragging = False
+wall_drag_x = 0
+wall_drag_y = 0
 
 
 # =========================================================
@@ -5156,6 +5177,7 @@ def change_turn():
     global mode
     global cpu_thinking
     global cpu_thinking_start
+    global wall_dragging
 
     # =====================================================
     # PLAYER 1 → PLAYER 2
@@ -5187,6 +5209,8 @@ def change_turn():
 
     cpu_thinking_start = 0
 
+    wall_dragging = False
+
 
 # =========================================================
 # RESET GAME
@@ -5200,51 +5224,83 @@ def reset_game():
     global cpu_thinking
     global cpu_thinking_start
 
-    # =====================================================
-    # PLAYER 1
-    # =====================================================
-
-    player1["row"] = 0
-    player1["col"] = 4
-    player1["walls"] = 10
+    global wall_dragging
+    global wall_drag_x
+    global wall_drag_y
 
     # =====================================================
-    # PLAYER 2
+    # PLAYER POSITION
     # =====================================================
 
-    player2["row"] = 8
-    player2["col"] = 4
-    player2["walls"] = 10
+    if cpu_mode:
+
+        # =================================================
+        # CPU MODE
+        #
+        # CPU = 上側
+        # HUMAN = 下側
+        # =================================================
+
+        player1["row"] = 8
+        player1["col"] = 4
+        player1["walls"] = 10
+        player1["goal"] = 0
+
+        player2["row"] = 0
+        player2["col"] = 4
+        player2["walls"] = 10
+        player2["goal"] = 8
+
+    else:
+
+        # =================================================
+        # PLAYER vs PLAYER
+        #
+        # 従来通り
+        # =================================================
+
+        player1["row"] = 0
+        player1["col"] = 4
+        player1["walls"] = 10
+        player1["goal"] = 8
+
+        player2["row"] = 8
+        player2["col"] = 4
+        player2["walls"] = 10
+        player2["goal"] = 0
 
     # =====================================================
     # WALLS
     # =====================================================
 
     horizontal_walls.clear()
-
     vertical_walls.clear()
 
     # =====================================================
-    # GAME STATE
+    # GAME
     # =====================================================
 
     turn = 1
-
     game_over = False
-
     mode = "move"
 
     # =====================================================
-    # CPU STATE
+    # CPU
     # =====================================================
 
     cpu_thinking = False
-
     cpu_thinking_start = 0
 
+    # =====================================================
+    # WALL DRAG
+    # =====================================================
+
+    wall_dragging = False
+    wall_drag_x = 0
+    wall_drag_y = 0
 
     # =====================================================
-    # CPU位置履歴も初期化
+    # CPU HISTORY
     # =====================================================
 
     cpu_position_history.clear()
@@ -5465,25 +5521,39 @@ def draw_board():
                 col
             )
 
-            # =============================================
+            # =================================================
             # GOAL AREA
-            # =============================================
+            # =================================================
 
-            if row == 0:
+            if cpu_mode:
 
-                color = GOAL_RED
+                # HUMAN(P1)のゴール
+                if row == 0:
 
-            elif row == 8:
+                    color = GOAL_BLUE
 
-                color = GOAL_BLUE
+                # CPU(P2)のゴール
+                elif row == 8:
+
+                    color = GOAL_RED
+
+                else:
+
+                    color = WHITE
 
             else:
 
-                color = WHITE
+                if row == 0:
 
-            # =============================================
-            # CELL
-            # =============================================
+                    color = GOAL_RED
+
+                elif row == 8:
+
+                    color = GOAL_BLUE
+
+                else:
+
+                    color = WHITE
 
             pygame.draw.rect(
                 screen,
@@ -5496,10 +5566,6 @@ def draw_board():
                 )
             )
 
-            # =============================================
-            # GRID
-            # =============================================
-
             pygame.draw.rect(
                 screen,
                 GRID,
@@ -5511,7 +5577,6 @@ def draw_board():
                 ),
                 1
             )
-
 
 # =========================================================
 # DRAW COORDINATES
@@ -5905,6 +5970,155 @@ def position_text(
 
 
 # =========================================================
+# BOARD TOUCH AREA
+# =========================================================
+
+def is_inside_board_area(
+    x,
+    y
+):
+
+    return (
+        BOARD_X - 25
+        <=
+        x
+        <=
+        BOARD_X
+        +
+        BOARD_SIZE * CELL_SIZE
+        +
+        25
+
+        and
+
+        BOARD_Y - 25
+        <=
+        y
+        <=
+        BOARD_Y
+        +
+        BOARD_SIZE * CELL_SIZE
+        +
+        25
+    )
+
+
+# =========================================================
+# START WALL DRAG
+# =========================================================
+
+def start_wall_drag(
+    x,
+    y
+):
+
+    global wall_dragging
+    global wall_drag_x
+    global wall_drag_y
+
+    if game_over:
+
+        return False
+
+    if mode != "wall":
+
+        return False
+
+    if (
+        cpu_mode
+        and
+        turn == 2
+    ):
+
+        return False
+
+    player = get_current_player()
+
+    if player["walls"] <= 0:
+
+        return False
+
+    if not is_inside_board_area(
+        x,
+        y
+    ):
+
+        return False
+
+    wall_dragging = True
+
+    wall_drag_x = x
+    wall_drag_y = y
+
+    return True
+
+
+# =========================================================
+# UPDATE WALL DRAG
+# =========================================================
+
+def update_wall_drag(
+    x,
+    y
+):
+
+    global wall_drag_x
+    global wall_drag_y
+
+    if not wall_dragging:
+
+        return
+
+    wall_drag_x = x
+    wall_drag_y = y
+
+
+# =========================================================
+# FINISH WALL DRAG
+# =========================================================
+
+def finish_wall_drag(
+    x,
+    y
+):
+
+    global wall_dragging
+    global wall_drag_x
+    global wall_drag_y
+
+    if not wall_dragging:
+
+        return False
+
+    wall_drag_x = x
+    wall_drag_y = y
+
+    # =====================================================
+    # 指を離した場所へ設置
+    # =====================================================
+
+    result = place_wall(
+        x,
+        y
+    )
+
+    wall_dragging = False
+
+    return result
+
+
+# =========================================================
+# CANCEL WALL DRAG
+# =========================================================
+
+def cancel_wall_drag():
+
+    global wall_dragging
+
+    wall_dragging = False
+
+
+# =========================================================
 # DRAW WALL PREVIEW
 # =========================================================
 
@@ -5917,10 +6131,6 @@ def draw_wall_preview():
     if mode != "wall":
 
         return
-
-    # =====================================================
-    # CPUターンでは表示しない
-    # =====================================================
 
     if (
         cpu_mode
@@ -5936,9 +6146,24 @@ def draw_wall_preview():
 
         return
 
-    mouse_x, mouse_y = (
-        pygame.mouse.get_pos()
-    )
+    # =====================================================
+    # DRAG中
+    # =====================================================
+
+    if wall_dragging:
+
+        mouse_x = wall_drag_x
+        mouse_y = wall_drag_y
+
+    # =====================================================
+    # PCマウス
+    # =====================================================
+
+    else:
+
+        mouse_x, mouse_y = (
+            pygame.mouse.get_pos()
+        )
 
     wall = wall_from_mouse(
         mouse_x,
@@ -5950,10 +6175,6 @@ def draw_wall_preview():
         return
 
     kind, row, col = wall
-
-    # =====================================================
-    # 設置可能判定
-    # =====================================================
 
     valid = can_place_wall(
         kind,
@@ -5968,6 +6189,20 @@ def draw_wall_preview():
     else:
 
         color = PREVIEW_INVALID
+
+    # =====================================================
+    # DRAG中はさらに太く表示
+    # =====================================================
+
+    if wall_dragging:
+
+        preview_width = (
+            WALL_WIDTH + 7
+        )
+
+    else:
+
+        preview_width = WALL_WIDTH
 
     # =====================================================
     # HORIZONTAL
@@ -6004,8 +6239,31 @@ def draw_wall_preview():
                 x2,
                 y
             ),
-            WALL_WIDTH
+            preview_width
         )
+
+        # 端も見やすくする
+        if wall_dragging:
+
+            pygame.draw.circle(
+                screen,
+                color,
+                (
+                    x1,
+                    y
+                ),
+                8
+            )
+
+            pygame.draw.circle(
+                screen,
+                color,
+                (
+                    x2,
+                    y
+                ),
+                8
+            )
 
     # =====================================================
     # VERTICAL
@@ -6042,7 +6300,64 @@ def draw_wall_preview():
                 x,
                 y2
             ),
-            WALL_WIDTH
+            preview_width
+        )
+
+        if wall_dragging:
+
+            pygame.draw.circle(
+                screen,
+                color,
+                (
+                    x,
+                    y1
+                ),
+                8
+            )
+
+            pygame.draw.circle(
+                screen,
+                color,
+                (
+                    x,
+                    y2
+                ),
+                8
+            )
+
+    # =====================================================
+    # MOBILE GUIDE
+    # =====================================================
+
+    if wall_dragging:
+
+        if valid:
+
+            guide_text = (
+                "RELEASE TO PLACE"
+            )
+
+        else:
+
+            guide_text = (
+                "CAN'T PLACE HERE"
+            )
+
+        guide = small_font.render(
+            guide_text,
+            True,
+            color
+        )
+
+        screen.blit(
+            guide,
+            (
+                WINDOW_WIDTH // 2
+                -
+                guide.get_width() // 2,
+
+                812
+            )
         )
 
 
@@ -6554,6 +6869,245 @@ def draw_mobile_controls():
 
 
 # =========================================================
+# WIN OVERLAY BUTTONS
+# =========================================================
+
+def get_win_overlay_buttons():
+
+    play_again_button = pygame.Rect(
+        180,
+        535,
+        220,
+        65
+    )
+
+    win_menu_button = pygame.Rect(
+        450,
+        535,
+        220,
+        65
+    )
+
+    return (
+        play_again_button,
+        win_menu_button
+    )
+
+
+# =========================================================
+# DRAW WIN OVERLAY
+# =========================================================
+
+def draw_win_overlay():
+
+    if not game_over:
+
+        return
+
+    # =====================================================
+    # DARK BACKGROUND
+    # =====================================================
+
+    dark = pygame.Surface(
+        (
+            WINDOW_WIDTH,
+            WINDOW_HEIGHT
+        ),
+        pygame.SRCALPHA
+    )
+
+    dark.fill(
+        (
+            0,
+            0,
+            0,
+            150
+        )
+    )
+
+    screen.blit(
+        dark,
+        (
+            0,
+            0
+        )
+    )
+
+    # =====================================================
+    # PANEL
+    # =====================================================
+
+    panel = pygame.Rect(
+        100,
+        300,
+        650,
+        320
+    )
+
+    pygame.draw.rect(
+        screen,
+        WHITE,
+        panel,
+        border_radius=25
+    )
+
+    pygame.draw.rect(
+        screen,
+        BLACK,
+        panel,
+        4,
+        border_radius=25
+    )
+
+    # =====================================================
+    # WINNER
+    # =====================================================
+
+    if (
+        player1["row"]
+        ==
+        player1["goal"]
+    ):
+
+        if cpu_mode:
+
+            winner_text = "YOU WIN!"
+
+        else:
+
+            winner_text = "PLAYER 1 WINS!"
+
+        winner_color = BLUE
+
+    else:
+
+        if cpu_mode:
+
+            winner_text = "CPU WINS!"
+
+        else:
+
+            winner_text = "PLAYER 2 WINS!"
+
+        winner_color = RED
+
+    winner_surface = win_font.render(
+        winner_text,
+        True,
+        winner_color
+    )
+
+    screen.blit(
+        winner_surface,
+        (
+            WINDOW_WIDTH // 2
+            -
+            winner_surface.get_width() // 2,
+
+            350
+        )
+    )
+
+    # =====================================================
+    # SUB TEXT
+    # =====================================================
+
+    sub_surface = win_sub_font.render(
+        "Great game!",
+        True,
+        BLACK
+    )
+
+    screen.blit(
+        sub_surface,
+        (
+            WINDOW_WIDTH // 2
+            -
+            sub_surface.get_width() // 2,
+
+            450
+        )
+    )
+
+    # =====================================================
+    # BUTTONS
+    # =====================================================
+
+    (
+        play_again_button,
+        win_menu_button
+    ) = get_win_overlay_buttons()
+
+    pygame.draw.rect(
+        screen,
+        MOVE_COLOR,
+        play_again_button,
+        border_radius=12
+    )
+
+    pygame.draw.rect(
+        screen,
+        BLACK,
+        play_again_button,
+        2,
+        border_radius=12
+    )
+
+    text = font.render(
+        "PLAY AGAIN",
+        True,
+        BLACK
+    )
+
+    screen.blit(
+        text,
+        (
+            play_again_button.centerx
+            -
+            text.get_width() // 2,
+
+            play_again_button.centery
+            -
+            text.get_height() // 2
+        )
+    )
+
+    pygame.draw.rect(
+        screen,
+        BUTTON_COLOR,
+        win_menu_button,
+        border_radius=12
+    )
+
+    pygame.draw.rect(
+        screen,
+        BLACK,
+        win_menu_button,
+        2,
+        border_radius=12
+    )
+
+    text = font.render(
+        "MENU",
+        True,
+        BLACK
+    )
+
+    screen.blit(
+        text,
+        (
+            win_menu_button.centerx
+            -
+            text.get_width() // 2,
+
+            win_menu_button.centery
+            -
+            text.get_height() // 2
+        )
+    )
+
+
+# =========================================================
 # DRAW GAME SCREEN
 # =========================================================
 
@@ -6593,7 +7147,13 @@ def draw_game_screen():
 
     draw_mobile_controls()
 
-    return draw_reset_button()
+    draw_reset_button()
+
+    # =========================================================
+    # WIN OVERLAY
+    # =========================================================
+
+    draw_win_overlay()
 
 
 # =========================================================
@@ -7372,6 +7932,48 @@ async def main():
                     continue
 
 
+                # =================================================
+                # WALL DRAG MOVE
+                # =================================================
+
+                elif event.type == pygame.MOUSEMOTION:
+
+                    if (
+                        scene == "game"
+                        and
+                        wall_dragging
+                    ):
+
+                        update_wall_drag(
+                            event.pos[0],
+                            event.pos[1]
+                        )
+
+
+                # =================================================
+                # WALL DRAG RELEASE
+                # =================================================
+
+                elif event.type == pygame.MOUSEBUTTONUP:
+
+                    if event.button != 1:
+
+                        continue
+
+                    if (
+                        scene == "game"
+                        and
+                        wall_dragging
+                    ):
+
+                        finish_wall_drag(
+                            event.pos[0],
+                            event.pos[1]
+                        )
+
+                        continue
+
+
                 # =========================================
                 # GAME SCREEN
                 # =========================================
@@ -7496,6 +8098,37 @@ async def main():
 
                     if game_over:
 
+                        (
+                            play_again_button,
+                            win_menu_button
+                        ) = get_win_overlay_buttons()
+
+                        # =====================================
+                        # PLAY AGAIN
+                        # =====================================
+
+                        if play_again_button.collidepoint(
+                            mouse_x,
+                            mouse_y
+                        ):
+
+                            reset_game()
+
+                        # =====================================
+                        # MENU
+                        # =====================================
+
+                        elif win_menu_button.collidepoint(
+                            mouse_x,
+                            mouse_y
+                        ):
+
+                            scene = "title"
+
+                            cpu_mode = False
+
+                            reset_game()
+
                         continue
 
 
@@ -7514,11 +8147,14 @@ async def main():
 
                     # =====================================
                     # WALL MODE
+                    #
+                    # クリック即設置ではなく
+                    # ドラッグ開始
                     # =====================================
 
                     if mode == "wall":
 
-                        place_wall(
+                        start_wall_drag(
                             mouse_x,
                             mouse_y
                         )
