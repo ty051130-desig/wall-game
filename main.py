@@ -6,6 +6,15 @@ from collections import deque
 
 
 # =========================================================
+# WEB
+# =========================================================
+
+IS_WEB = (
+    sys.platform == "emscripten"
+)
+
+
+# =========================================================
 # SETTINGS
 # =========================================================
 
@@ -4979,6 +4988,204 @@ def cpu_move():
 
 
 # =========================================================
+# WALL FROM TOUCH
+#
+# スマホでは細い線を正確に押さなくても
+# 一番近い壁位置へ自動スナップする
+# =========================================================
+
+def wall_from_touch(
+    touch_x,
+    touch_y
+):
+
+    relative_x = (
+        touch_x
+        -
+        BOARD_X
+    )
+
+    relative_y = (
+        touch_y
+        -
+        BOARD_Y
+    )
+
+    # =====================================================
+    # BOARD OUTSIDE
+    # =====================================================
+
+    if (
+        relative_x < 0
+        or
+        relative_y < 0
+        or
+        relative_x
+        >
+        BOARD_SIZE * CELL_SIZE
+        or
+        relative_y
+        >
+        BOARD_SIZE * CELL_SIZE
+    ):
+
+        return None
+
+    # =====================================================
+    # 一番近い縦線・横線
+    # =====================================================
+
+    vertical_line = round(
+        relative_x
+        /
+        CELL_SIZE
+    )
+
+    horizontal_line = round(
+        relative_y
+        /
+        CELL_SIZE
+    )
+
+    vertical_distance = abs(
+        relative_x
+        -
+        vertical_line * CELL_SIZE
+    )
+
+    horizontal_distance = abs(
+        relative_y
+        -
+        horizontal_line * CELL_SIZE
+    )
+
+    # =====================================================
+    # 横線に近い
+    # → 横壁
+    # =====================================================
+
+    if (
+        horizontal_distance
+        <=
+        vertical_distance
+    ):
+
+        row = (
+            horizontal_line
+            -
+            1
+        )
+
+        # タップ位置が
+        # 壁の中央になるようにスナップ
+        col = (
+            round(
+                relative_x
+                /
+                CELL_SIZE
+            )
+            -
+            1
+        )
+
+        row = max(
+            0,
+            min(
+                7,
+                row
+            )
+        )
+
+        col = max(
+            0,
+            min(
+                7,
+                col
+            )
+        )
+
+        return (
+            "H",
+            row,
+            col
+        )
+
+    # =====================================================
+    # 縦線に近い
+    # → 縦壁
+    # =====================================================
+
+    else:
+
+        col = (
+            vertical_line
+            -
+            1
+        )
+
+        row = (
+            round(
+                relative_y
+                /
+                CELL_SIZE
+            )
+            -
+            1
+        )
+
+        row = max(
+            0,
+            min(
+                7,
+                row
+            )
+        )
+
+        col = max(
+            0,
+            min(
+                7,
+                col
+            )
+        )
+
+        return (
+            "V",
+            row,
+            col
+        )
+
+
+# =========================================================
+# PLACE TOUCH WALL
+# =========================================================
+
+def place_touch_wall(
+    touch_x,
+    touch_y
+):
+
+    wall = wall_from_touch(
+        touch_x,
+        touch_y
+    )
+
+    if wall is None:
+
+        return False
+
+    kind, row, col = wall
+
+    # 以前作った
+    # place_specific_wall をそのまま利用
+    return place_specific_wall(
+        kind,
+        row,
+        col
+    )
+
+
+# =========================================================
 # WALL FROM MOUSE
 #
 # マウス位置から
@@ -8178,66 +8385,8 @@ async def main():
 
                     continue
                 
-                # =================================================
-                # MOBILE FINGER DRAG
-                # =================================================
+                
 
-                elif event.type == pygame.FINGERMOTION:
-
-                    if (
-                        scene == "game"
-                        and
-                        wall_dragging
-                    ):
-
-                        finger_x = int(
-                            event.x
-                            *
-                            WINDOW_WIDTH
-                        )
-
-                        finger_y = int(
-                            event.y
-                            *
-                            WINDOW_HEIGHT
-                        )
-
-                        update_wall_drag(
-                            finger_x,
-                            finger_y
-                        )
-
-
-                # =================================================
-                # MOBILE FINGER RELEASE
-                # =================================================
-
-                elif event.type == pygame.FINGERUP:
-
-                    if (
-                        scene == "game"
-                        and
-                        wall_dragging
-                    ):
-
-                        finger_x = int(
-                            event.x
-                            *
-                            WINDOW_WIDTH
-                        )
-
-                        finger_y = int(
-                            event.y
-                            *
-                            WINDOW_HEIGHT
-                        )
-
-                        finish_wall_drag(
-                            finger_x,
-                            finger_y
-                        )
-
-                        continue
 
 
                 # =========================================
@@ -8418,30 +8567,31 @@ async def main():
                     if mode == "wall":
 
                         # =================================
-                        # スマホ由来のタッチ
+                        # WEB / SMARTPHONE
                         #
-                        # ここでは何もしない
-                        # FINGERDOWN側でドラッグ開始する
+                        # タップ位置から
+                        # 自動スナップして壁設置
                         # =================================
 
-                        if getattr(
-                            event,
-                            "touch",
-                            False
-                        ):
+                        if IS_WEB:
 
-                            continue
+                            place_touch_wall(
+                                mouse_x,
+                                mouse_y
+                            )
 
                         # =================================
                         # PC
                         #
-                        # 従来通りクリックで即設置
+                        # 従来の正確なマウス操作
                         # =================================
 
-                        place_wall(
-                            mouse_x,
-                            mouse_y
-                        )
+                        else:
+
+                            place_wall(
+                                mouse_x,
+                                mouse_y
+                            )
 
                         continue
 
@@ -8465,51 +8615,6 @@ async def main():
                         )
 
 
-                    # =================================================
-                    # MOBILE FINGER DOWN
-                    # =================================================
-
-                    elif event.type == pygame.FINGERDOWN:
-
-                        if (
-                            scene == "game"
-                            and
-                            mode == "wall"
-                            and
-                            not game_over
-                        ):
-
-                            if (
-                                cpu_mode
-                                and
-                                turn == 2
-                            ):
-
-                                continue
-
-                            finger_x = int(
-                                event.x
-                                *
-                                WINDOW_WIDTH
-                            )
-
-                            finger_y = int(
-                                event.y
-                                *
-                                WINDOW_HEIGHT
-                            )
-
-                            if is_inside_board_area(
-                                finger_x,
-                                finger_y
-                            ):
-
-                                start_wall_drag(
-                                    finger_x,
-                                    finger_y
-                                )
-
-                                continue
 
 
         # =================================================
