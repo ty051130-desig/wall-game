@@ -197,8 +197,18 @@ cpu_thinking_start = 0
 # =========================================================
 
 wall_dragging = False
+
+wall_drag_start_x = 0
+wall_drag_start_y = 0
+
 wall_drag_x = 0
 wall_drag_y = 0
+
+# "H" / "V" / None
+wall_drag_kind = None
+
+# ("H", row, col) / ("V", row, col) / None
+wall_drag_candidate = None
 
 
 # =========================================================
@@ -5228,6 +5238,9 @@ def reset_game():
     global wall_drag_x
     global wall_drag_y
 
+    global wall_drag_kind
+    global wall_drag_candidate
+
     # =====================================================
     # PLAYER POSITION
     # =====================================================
@@ -5296,8 +5309,13 @@ def reset_game():
     # =====================================================
 
     wall_dragging = False
+
     wall_drag_x = 0
     wall_drag_y = 0
+
+    wall_drag_kind = None
+
+    wall_drag_candidate = None
 
     # =====================================================
     # CPU HISTORY
@@ -6004,6 +6022,134 @@ def is_inside_board_area(
 
 
 # =========================================================
+# SNAP WALL
+#
+# 指の位置に最も近い壁位置へ
+# 自動的にスナップする
+# =========================================================
+
+def get_snapped_wall(
+    kind,
+    x,
+    y
+):
+
+    # =====================================================
+    # 壁の中心は格子点
+    # =====================================================
+
+    col = round(
+        (
+            x - BOARD_X
+        )
+        /
+        CELL_SIZE
+        -
+        1
+    )
+
+    row = round(
+        (
+            y - BOARD_Y
+        )
+        /
+        CELL_SIZE
+        -
+        1
+    )
+
+    # =====================================================
+    # 0～7に制限
+    # =====================================================
+
+    row = max(
+        0,
+        min(
+            7,
+            row
+        )
+    )
+
+    col = max(
+        0,
+        min(
+            7,
+            col
+        )
+    )
+
+    return (
+        kind,
+        int(row),
+        int(col)
+    )
+
+
+# =========================================================
+# PLACE SPECIFIC WALL
+#
+# 指を離した時に
+# 「表示されている候補」をそのまま設置する
+# =========================================================
+
+def place_specific_wall(
+    kind,
+    row,
+    col
+):
+
+    if game_over:
+
+        return False
+
+    if mode != "wall":
+
+        return False
+
+    if (
+        cpu_mode
+        and
+        turn == 2
+    ):
+
+        return False
+
+    player = get_current_player()
+
+    if player["walls"] <= 0:
+
+        return False
+
+    # =====================================================
+    # 最終合法判定
+    # =====================================================
+
+    if not can_place_wall(
+        kind,
+        row,
+        col
+    ):
+
+        return False
+
+    # =====================================================
+    # 設置
+    # =====================================================
+
+    apply_wall(
+        kind,
+        row,
+        col
+    )
+
+    player["walls"] -= 1
+
+    change_turn()
+
+    return True
+
+
+# =========================================================
 # START WALL DRAG
 # =========================================================
 
@@ -6013,8 +6159,15 @@ def start_wall_drag(
 ):
 
     global wall_dragging
+
+    global wall_drag_start_x
+    global wall_drag_start_y
+
     global wall_drag_x
     global wall_drag_y
+
+    global wall_drag_kind
+    global wall_drag_candidate
 
     if game_over:
 
@@ -6045,16 +6198,30 @@ def start_wall_drag(
 
         return False
 
+    # =====================================================
+    # DRAG START
+    # =====================================================
+
     wall_dragging = True
+
+    wall_drag_start_x = x
+    wall_drag_start_y = y
 
     wall_drag_x = x
     wall_drag_y = y
+
+    wall_drag_kind = None
+
+    wall_drag_candidate = None
 
     return True
 
 
 # =========================================================
 # UPDATE WALL DRAG
+#
+# 横ドラッグ → H
+# 縦ドラッグ → V
 # =========================================================
 
 def update_wall_drag(
@@ -6065,6 +6232,9 @@ def update_wall_drag(
     global wall_drag_x
     global wall_drag_y
 
+    global wall_drag_kind
+    global wall_drag_candidate
+
     if not wall_dragging:
 
         return
@@ -6072,9 +6242,68 @@ def update_wall_drag(
     wall_drag_x = x
     wall_drag_y = y
 
+    # =====================================================
+    # 最初の位置との差
+    # =====================================================
+
+    dx = (
+        x
+        -
+        wall_drag_start_x
+    )
+
+    dy = (
+        y
+        -
+        wall_drag_start_y
+    )
+
+    # =====================================================
+    # 少し動かすまでは方向を決定しない
+    # =====================================================
+
+    if wall_drag_kind is None:
+
+        if max(
+            abs(dx),
+            abs(dy)
+        ) < 15:
+
+            return
+
+        # =================================================
+        # 横へドラッグ
+        # =================================================
+
+        if abs(dx) >= abs(dy):
+
+            wall_drag_kind = "H"
+
+        # =================================================
+        # 縦へドラッグ
+        # =================================================
+
+        else:
+
+            wall_drag_kind = "V"
+
+    # =====================================================
+    # 指の現在位置に壁をスナップ
+    # =====================================================
+
+    wall_drag_candidate = (
+        get_snapped_wall(
+            wall_drag_kind,
+            x,
+            y
+        )
+    )
+
 
 # =========================================================
 # FINISH WALL DRAG
+#
+# 表示している候補をそのまま設置
 # =========================================================
 
 def finish_wall_drag(
@@ -6083,28 +6312,55 @@ def finish_wall_drag(
 ):
 
     global wall_dragging
-    global wall_drag_x
-    global wall_drag_y
+    global wall_drag_kind
+    global wall_drag_candidate
 
     if not wall_dragging:
 
         return False
 
-    wall_drag_x = x
-    wall_drag_y = y
-
     # =====================================================
-    # 指を離した場所へ設置
+    # 離した瞬間の位置まで反映
     # =====================================================
 
-    result = place_wall(
+    update_wall_drag(
         x,
         y
     )
 
+    candidate = (
+        wall_drag_candidate
+    )
+
+    # =====================================================
+    # 先にドラッグ状態解除
+    # =====================================================
+
     wall_dragging = False
 
-    return result
+    wall_drag_kind = None
+
+    wall_drag_candidate = None
+
+    # =====================================================
+    # 候補なし
+    # =====================================================
+
+    if candidate is None:
+
+        return False
+
+    kind, row, col = candidate
+
+    # =====================================================
+    # 表示されていた壁をそのまま設置
+    # =====================================================
+
+    return place_specific_wall(
+        kind,
+        row,
+        col
+    )
 
 
 # =========================================================
@@ -6114,8 +6370,14 @@ def finish_wall_drag(
 def cancel_wall_drag():
 
     global wall_dragging
+    global wall_drag_kind
+    global wall_drag_candidate
 
     wall_dragging = False
+
+    wall_drag_kind = None
+
+    wall_drag_candidate = None
 
 
 # =========================================================
@@ -6152,8 +6414,34 @@ def draw_wall_preview():
 
     if wall_dragging:
 
-        mouse_x = wall_drag_x
-        mouse_y = wall_drag_y
+        wall = (
+            wall_drag_candidate
+        )
+
+        # =================================================
+        # まだ方向が決まっていない
+        # =================================================
+
+        if wall is None:
+
+            guide = small_font.render(
+                "DRAG HORIZONTALLY OR VERTICALLY",
+                True,
+                BLACK
+            )
+
+            screen.blit(
+                guide,
+                (
+                    WINDOW_WIDTH // 2
+                    -
+                    guide.get_width() // 2,
+
+                    812
+                )
+            )
+
+            return
 
     # =====================================================
     # PCマウス
@@ -6165,14 +6453,18 @@ def draw_wall_preview():
             pygame.mouse.get_pos()
         )
 
-    wall = wall_from_mouse(
-        mouse_x,
-        mouse_y
-    )
+        wall = wall_from_mouse(
+            mouse_x,
+            mouse_y
+        )
 
-    if wall is None:
+        if wall is None:
 
-        return
+            return
+
+    # =====================================================
+    # 今表示する壁
+    # =====================================================
 
     kind, row, col = wall
 
@@ -6191,13 +6483,13 @@ def draw_wall_preview():
         color = PREVIEW_INVALID
 
     # =====================================================
-    # DRAG中はさらに太く表示
+    # DRAG中は太く
     # =====================================================
 
     if wall_dragging:
 
         preview_width = (
-            WALL_WIDTH + 7
+            WALL_WIDTH + 8
         )
 
     else:
@@ -6242,29 +6534,6 @@ def draw_wall_preview():
             preview_width
         )
 
-        # 端も見やすくする
-        if wall_dragging:
-
-            pygame.draw.circle(
-                screen,
-                color,
-                (
-                    x1,
-                    y
-                ),
-                8
-            )
-
-            pygame.draw.circle(
-                screen,
-                color,
-                (
-                    x2,
-                    y
-                ),
-                8
-            )
-
     # =====================================================
     # VERTICAL
     # =====================================================
@@ -6303,28 +6572,6 @@ def draw_wall_preview():
             preview_width
         )
 
-        if wall_dragging:
-
-            pygame.draw.circle(
-                screen,
-                color,
-                (
-                    x,
-                    y1
-                ),
-                8
-            )
-
-            pygame.draw.circle(
-                screen,
-                color,
-                (
-                    x,
-                    y2
-                ),
-                8
-            )
-
     # =====================================================
     # MOBILE GUIDE
     # =====================================================
@@ -6333,18 +6580,18 @@ def draw_wall_preview():
 
         if valid:
 
-            guide_text = (
+            message = (
                 "RELEASE TO PLACE"
             )
 
         else:
 
-            guide_text = (
+            message = (
                 "CAN'T PLACE HERE"
             )
 
-        guide = small_font.render(
-            guide_text,
+        guide = font.render(
+            message,
             True,
             color
         )
@@ -6356,7 +6603,7 @@ def draw_wall_preview():
                 -
                 guide.get_width() // 2,
 
-                812
+                810
             )
         )
 
@@ -7930,13 +8177,12 @@ async def main():
                         scene = "title"
 
                     continue
-
-
+                
                 # =================================================
-                # WALL DRAG MOVE
+                # MOBILE FINGER DRAG
                 # =================================================
 
-                elif event.type == pygame.MOUSEMOTION:
+                elif event.type == pygame.FINGERMOTION:
 
                     if (
                         scene == "game"
@@ -7944,21 +8190,29 @@ async def main():
                         wall_dragging
                     ):
 
+                        finger_x = int(
+                            event.x
+                            *
+                            WINDOW_WIDTH
+                        )
+
+                        finger_y = int(
+                            event.y
+                            *
+                            WINDOW_HEIGHT
+                        )
+
                         update_wall_drag(
-                            event.pos[0],
-                            event.pos[1]
+                            finger_x,
+                            finger_y
                         )
 
 
                 # =================================================
-                # WALL DRAG RELEASE
+                # MOBILE FINGER RELEASE
                 # =================================================
 
-                elif event.type == pygame.MOUSEBUTTONUP:
-
-                    if event.button != 1:
-
-                        continue
+                elif event.type == pygame.FINGERUP:
 
                     if (
                         scene == "game"
@@ -7966,9 +8220,21 @@ async def main():
                         wall_dragging
                     ):
 
+                        finger_x = int(
+                            event.x
+                            *
+                            WINDOW_WIDTH
+                        )
+
+                        finger_y = int(
+                            event.y
+                            *
+                            WINDOW_HEIGHT
+                        )
+
                         finish_wall_drag(
-                            event.pos[0],
-                            event.pos[1]
+                            finger_x,
+                            finger_y
                         )
 
                         continue
@@ -8147,14 +8413,32 @@ async def main():
 
                     # =====================================
                     # WALL MODE
-                    #
-                    # クリック即設置ではなく
-                    # ドラッグ開始
                     # =====================================
 
                     if mode == "wall":
 
-                        start_wall_drag(
+                        # =================================
+                        # スマホ由来のタッチ
+                        #
+                        # ここでは何もしない
+                        # FINGERDOWN側でドラッグ開始する
+                        # =================================
+
+                        if getattr(
+                            event,
+                            "touch",
+                            False
+                        ):
+
+                            continue
+
+                        # =================================
+                        # PC
+                        #
+                        # 従来通りクリックで即設置
+                        # =================================
+
+                        place_wall(
                             mouse_x,
                             mouse_y
                         )
@@ -8179,6 +8463,53 @@ async def main():
                             row,
                             col
                         )
+
+
+                    # =================================================
+                    # MOBILE FINGER DOWN
+                    # =================================================
+
+                    elif event.type == pygame.FINGERDOWN:
+
+                        if (
+                            scene == "game"
+                            and
+                            mode == "wall"
+                            and
+                            not game_over
+                        ):
+
+                            if (
+                                cpu_mode
+                                and
+                                turn == 2
+                            ):
+
+                                continue
+
+                            finger_x = int(
+                                event.x
+                                *
+                                WINDOW_WIDTH
+                            )
+
+                            finger_y = int(
+                                event.y
+                                *
+                                WINDOW_HEIGHT
+                            )
+
+                            if is_inside_board_area(
+                                finger_x,
+                                finger_y
+                            ):
+
+                                start_wall_drag(
+                                    finger_x,
+                                    finger_y
+                                )
+
+                                continue
 
 
         # =================================================
